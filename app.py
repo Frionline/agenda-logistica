@@ -21,21 +21,16 @@ if st.session_state.usuario is None:
     st.title("🔐 Acesso ao Sistema")
     st.subheader("Atendimento e Gestão de Logística")
 
-    with st.form("form_login"):
+with st.form("form_login"):
         email = st.text_input("E-mail de acesso")
         senha = st.text_input("Senha", type="password")
         btn_entrar = st.form_submit_button("Entrar")
-
+        
         if btn_entrar:
             usr = autenticar_usuario(email, senha)
             if usr:
-                st.session_state.usuario = {
-                    "id": usr.id,
-                    "nome": usr.nome,
-                    "email": usr.email,
-                    "perfil": usr.perfil
-                }
-                st.success(f"Bem-vindo(a), {usr.nome}!")
+                st.session_state.usuario = usr  # usr já é o dicionário de dados
+                st.success(f"Bem-vindo(a), {usr['nome']}!")
                 st.rerun()
             else:
                 st.error("E-mail ou senha incorretos (ou usuário inativo).")
