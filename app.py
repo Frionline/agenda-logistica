@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from database import init_db, get_db
 from models import Usuario, DisponibilidadeVaga, Agendamento
 from auth import autenticar_usuario, criar_admin_padrao, hash_senha
@@ -18,7 +18,7 @@ CIDADES = [
 ]
 
 SERVICOS = [
-    "Instalação", "Reparo", "Mudança de Endereço", "Upgrade", "Alteração de Ponto"
+    "Reparo", "Instalação", "Mudança de Endereço", "Upgrade", "Alteração de Ponto"
 ]
 
 if "usuario" not in st.session_state:
@@ -64,7 +64,7 @@ else:
     if usr["perfil"] in ["admin", "suporte"]:
         opcoes_menu.append("2. Agendamento (Suporte)")
     if usr["perfil"] in ["admin", "gestor_logistica", "suporte"]:
-        opcoes_menu.append("3. Agenda de O.S. (Consulta)")
+        opcoes_menu.append("3. Painel de Agenda (3 Dias)")
     if usr["perfil"] in ["admin", "gestor_logistica"]:
         opcoes_menu.append("4. Importação de CSV")
     if usr["perfil"] == "admin":
@@ -218,58 +218,110 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 3: AGENDA DE O.S. (CONSULTA POR DATA)
+    # MÓDULO 3: PAINEL DE AGENDA (VISUALIZAÇÃO 3 DIAS + RELATÓRIO)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "3. Agenda de O.S. (Consulta)":
-        st.title("📋 Agenda de Ordens de Serviço (O.S.)")
+    elif menu_selecionado == "3. Painel de Agenda (3 Dias)":
+        st.title("📊 Painel da Agenda de Serviços")
         
-        col_d, col_c = st.columns(2)
-        with col_d:
-            data_consulta = st.date_input("Selecione a Data para Consulta", value=date.today(), format="DD/MM/YYYY")
-        with col_c:
-            cidade_filtro = st.selectbox("Filtrar por Cidade", ["Todas"] + CIDADES)
-            
-        db = get_db()
-        try:
-            query = db.query(Agendamento).filter(Agendamento.data_agendamento == data_consulta)
-            if cidade_filtro != "Todas":
-                query = query.filter(Agendamento.cidade == cidade_filtro)
+        tab_painel, tab_detalhes = st.tabs(["🗓️ Visão 3 Dias (Grade)", "📋 Lista Detalhada de O.S."])
+        
+        # --- TAB 1: PAINEL EM GRADE (ESTILO PLANILHA) ---
+        with tab_painel:
+            col_c, col_s, col_d = st.columns(3)
+            with col_c:
+                cid_painel = st.selectbox("Selecione a Cidade", CIDADES)
+            with col_s:
+                serv_painel = st.selectbox("Selecione o Tipo de Serviço", SERVICOS)
+            with col_d:
+                data_inicio = st.date_input("Data Inicial", value=date.today(), format="DD/MM/YYYY")
                 
-            agendamentos = query.all()
+            st.markdown("---")
             
-            if not agendamentos:
-                st.info(f"Nenhum agendamento encontrado para a data {data_consulta.strftime('%d/%m/%Y')}.")
-            else:
-                st.subheader(f"Agendamentos para {data_consulta.strftime('%d/%m/%Y')} ({len(agendamentos)} O.S.)")
+            db = get_db()
+            try:
+                periodos = ["Manhã", "Livre", "Tarde", "Noite"]
                 
-                dados_tabela = []
-                for a in agendamentos:
-                    dados_tabela.append({
-                        "ID Cliente": a.cliente_id,
-                        "Nome Cliente": a.nome_cliente if a.nome_cliente else "Pendente (CSV)",
-                        "Cidade": a.cidade,
-                        "Bairro": a.bairro if a.bairro else "-",
-                        "Rua": a.rua if a.rua else "-",
-                        "Serviço": a.tipo_servico,
-                        "Período": a.periodo,
-                        "Observações": a.observacoes if a.observacoes else "-",
-                        "Categoria 4": a.categoria_4 if a.categoria_4 else "-",
-                        "Status": a.status,
-                        "Dados Completos": "Sim" if a.dados_completos else "Não"
+                # Gera o bloco visual para 3 dias consecutivos
+                for i in range(3):
+                    dia_atual = data_inicio + timedelta(days=i)
+                    st.subheader(f"📅 Dia {dia_atual.strftime('%d/%m/%Y')} ({dia_atual.strftime('%A')})")
+                    
+                    disp_row = []
+                    agend_row = []
+                    
+                    for p in periodos:
+                        vaga = db.query(DisponibilidadeVaga).filter_by(
+                            data=dia_atual, cidade=cid_painel, tipo_servico=serv_painel, periodo=p
+                        ).first()
+                        
+                        totais = vaga.vagas_totais if vaga else 0
+                        agendadas = vaga.vagas_agendadas if vaga else 0
+                        disponiveis = max(0, totais - agendadas)
+                        
+                        disp_row.append(disponiveis)
+                        agend_row.append(agendadas)
+                    
+                    df_grade = pd.DataFrame({
+                        "STATUS": ["DISPONÍVEIS", "AGENDADAS"],
+                        "MANHÃ": [disp_row[0], agend_row[0]],
+                        "LIVRE": [disp_row[1], agend_row[1]],
+                        "TARDE": [disp_row[2], agend_row[2]],
+                        "NOITE": [disp_row[3], agend_row[3]]
                     })
+                    
+                    st.dataframe(df_grade, use_container_width=True, hide_index=True)
+                    st.markdown("<br>", unsafe_allow_html=True)
+            finally:
+                db.close()
                 
-                df_ag = pd.DataFrame(dados_tabela)
-                st.dataframe(df_ag, use_container_width=True)
+        # --- TAB 2: LISTA COMPLETA DE O.S. (CONSULTA E EXPORTAÇÃO) ---
+        with tab_detalhes:
+            st.subheader("Consulta e Download do Relatório")
+            col_d1, col_c1 = st.columns(2)
+            with col_d1:
+                data_consulta = st.date_input("Data da Consulta", value=date.today(), format="DD/MM/YYYY")
+            with col_c1:
+                cidade_filtro = st.selectbox("Filtrar Cidade", ["Todas"] + CIDADES)
                 
-                csv_data = df_ag.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Baixar Relatório do Dia (CSV)",
-                    data=csv_data,
-                    file_name=f"agendamentos_{data_consulta.strftime('%Y_%m_%d')}.csv",
-                    mime="text/csv"
-                )
-        finally:
-            db.close()
+            db = get_db()
+            try:
+                query = db.query(Agendamento).filter(Agendamento.data_agendamento == data_consulta)
+                if cidade_filtro != "Todas":
+                    query = query.filter(Agendamento.cidade == cidade_filtro)
+                    
+                agendamentos = query.all()
+                
+                if not agendamentos:
+                    st.info(f"Nenhum agendamento para {data_consulta.strftime('%d/%m/%Y')}.")
+                else:
+                    dados_tabela = []
+                    for a in agendamentos:
+                        dados_tabela.append({
+                            "ID Cliente": a.cliente_id,
+                            "Nome Cliente": a.nome_cliente if a.nome_cliente else "Pendente (CSV)",
+                            "Cidade": a.cidade,
+                            "Bairro": a.bairro if a.bairro else "-",
+                            "Rua": a.rua if a.rua else "-",
+                            "Serviço": a.tipo_servico,
+                            "Período": a.periodo,
+                            "Observações": a.observacoes if a.observacoes else "-",
+                            "Categoria 4": a.categoria_4 if a.categoria_4 else "-",
+                            "Status": a.status,
+                            "Dados Completos": "Sim" if a.dados_completos else "Não"
+                        })
+                    
+                    df_ag = pd.DataFrame(dados_tabela)
+                    st.dataframe(df_ag, use_container_width=True)
+                    
+                    csv_data = df_ag.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Baixar Relatório em CSV",
+                        data=csv_data,
+                        file_name=f"agendamentos_{data_consulta.strftime('%Y_%m_%d')}.csv",
+                        mime="text/csv"
+                    )
+            finally:
+                db.close()
 
     # -------------------------------------------------------------------------
     # MÓDULO 4: IMPORTAÇÃO DE CSV
