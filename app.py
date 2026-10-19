@@ -66,7 +66,7 @@ else:
     if usr["perfil"] in ["admin", "gestor_logistica", "suporte"]:
         opcoes_menu.append("3. Painel de Agenda (3 Dias)")
     if usr["perfil"] in ["admin", "gestor_logistica"]:
-        opcoes_menu.append("4. Importação de CSV")
+        opcoes_menu.append("4. Importação de Excel (.xlsx)")
     if usr["perfil"] == "admin":
         opcoes_menu.append("5. Gestão de Usuários")
 
@@ -220,7 +220,6 @@ else:
         
         tab_painel, tab_detalhes = st.tabs(["🗓️ Visão 3 Dias (Grade)", "📋 Lista Detalhada de O.S."])
         
-        # --- TAB 1: PAINEL EM GRADE (ESTILO PLANILHA COM LISTA DE CLIENTES) ---
         with tab_painel:
             col_c, col_s, col_d = st.columns(3)
             with col_c:
@@ -268,7 +267,6 @@ else:
                     
                     st.dataframe(df_grade, use_container_width=True, hide_index=True)
                     
-                    # Detalhamento retrátil dos clientes do dia
                     clientes_dia = db.query(Agendamento).filter_by(
                         data_agendamento=dia_atual, cidade=cid_painel, tipo_servico=serv_painel
                     ).all()
@@ -279,7 +277,7 @@ else:
                             for c in clientes_dia:
                                 listagem.append({
                                     "ID Cliente": c.cliente_id,
-                                    "Nome": c.nome_cliente if c.nome_cliente else "Aguardando CSV",
+                                    "Nome": c.nome_cliente if c.nome_cliente else "Aguardando Excel",
                                     "Período": c.periodo,
                                     "Observação": c.observacoes if c.observacoes else "-",
                                     "Status": c.status
@@ -292,7 +290,6 @@ else:
             finally:
                 db.close()
                 
-        # --- TAB 2: LISTA COMPLETA DE O.S. (CONSULTA E EXPORTAÇÃO) ---
         with tab_detalhes:
             st.subheader("Consulta e Download do Relatório")
             col_d1, col_c1 = st.columns(2)
@@ -316,7 +313,7 @@ else:
                     for a in agendamentos:
                         dados_tabela.append({
                             "ID Cliente": a.cliente_id,
-                            "Nome Cliente": a.nome_cliente if a.nome_cliente else "Pendente (CSV)",
+                            "Nome Cliente": a.nome_cliente if a.nome_cliente else "Pendente (Excel)",
                             "Cidade": a.cidade,
                             "Bairro": a.bairro if a.bairro else "-",
                             "Rua": a.rua if a.rua else "-",
@@ -342,17 +339,18 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 4: IMPORTAÇÃO DE CSV
+    # MÓDULO 4: IMPORTAÇÃO DE EXCEL (.XLSX)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "4. Importação de CSV":
-        st.title("📥 Importação de CSV e Enriquecimento de Dados")
+    elif menu_selecionado == "4. Importação de Excel (.xlsx)":
+        st.title("📥 Importação de Planilha Excel e Enriquecimento de Dados")
         
-        arquivo_csv = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
+        arquivo_excel = st.file_uploader("Selecione o arquivo Excel (.xlsx ou .xls)", type=["xlsx", "xls"])
         data_referencia = st.date_input("Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
         
-        if arquivo_csv and st.button("Processar e Atualizar Agendamentos"):
-            df = pd.read_csv(arquivo_csv, dtype=str)
-            st.write("Visualização do Arquivo Enviado:", df.head())
+        if arquivo_excel and st.button("Processar e Atualizar Agendamentos"):
+            # Lê a planilha Excel como texto puro
+            df = pd.read_excel(arquivo_excel, dtype=str)
+            st.write("Visualização da Planilha Enviada:", df.head())
             
             db = get_db()
             atualizados = 0
@@ -377,7 +375,7 @@ else:
                 db.commit()
                 st.success(f"Processamento concluído! {atualizados} registros atualizados com sucesso.")
                 if nao_encontrados > 0:
-                    st.info(f"{nao_encontrados} IDs do CSV não possuíam agendamento cadastrado para a data {data_referencia.strftime('%d/%m/%Y')}.")
+                    st.info(f"{nao_encontrados} IDs do arquivo Excel não possuíam agendamento cadastrado para a data {data_referencia.strftime('%d/%m/%Y')}.")
             finally:
                 db.close()
 
