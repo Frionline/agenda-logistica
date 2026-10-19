@@ -135,7 +135,7 @@ else:
     elif menu_selecionado == "2. Agendamento (Suporte)":
         st.title("🎧 Central de Agendamentos e Reagendamentos")
         
-        cliente_id = st.text_input("ID do Cliente", help="Digite o ID para pesquisar agendamentos existentes")
+        cliente_id = st.text_input("ID do Protocolo", help="Digite o número do protocolo para pesquisar agendamentos existentes")
         
         if cliente_id:
             db = get_db()
@@ -143,7 +143,7 @@ else:
                 agendamento_existente = db.query(Agendamento).filter_by(cliente_id=cliente_id.strip()).first()
                 
                 if agendamento_existente:
-                    st.warning(f"⚠️ Cliente já possui agendamento para {agendamento_existente.data_agendamento.strftime('%d/%m/%Y')} no período da {agendamento_existente.periodo}. Modo: REAGENDAMENTO.")
+                    st.warning(f"⚠️ Este protocolo já possui agendamento para {agendamento_existente.data_agendamento.strftime('%d/%m/%Y')} no período da {agendamento_existente.periodo}. Modo: REAGENDAMENTO.")
                 
                 c1, c2 = st.columns(2)
                 with c1:
@@ -271,27 +271,29 @@ else:
                         data_agendamento=dia_atual, cidade=cid_painel, tipo_servico=serv_painel
                     ).all()
                     
-                    with st.expander(f"🔍 Ver clientes agendados para {dia_atual.strftime('%d/%m/%Y')} ({len(clientes_dia)} cliente(s))"):
+                    with st.expander(f"🔍 Ver agendamentos para {dia_atual.strftime('%d/%m/%Y')} ({len(clientes_dia)} registro(s))"):
                         if clientes_dia:
                             listagem = []
                             for c in clientes_dia:
                                 listagem.append({
-                                    "ID Cliente": c.cliente_id,
-                                    "Nome": c.nome_cliente if c.nome_cliente else "Aguardando Excel",
+                                    "Protocolo": c.cliente_id,
+                                    "Cliente": c.nome_cliente if c.nome_cliente else "Aguardando Excel",
+                                    "Contato 1": c.contato_1 if c.contato_1 else "-",
+                                    "Contato 2": c.contato_2 if c.contato_2 else "-",
                                     "Período": c.periodo,
                                     "Observação": c.observacoes if c.observacoes else "-",
                                     "Status": c.status
                                 })
                             st.dataframe(pd.DataFrame(listagem), use_container_width=True, hide_index=True)
                         else:
-                            st.caption("Nenhum cliente agendado para esta cidade e serviço neste dia.")
+                            st.caption("Nenhum protocolo agendado para esta cidade e serviço neste dia.")
                             
                     st.markdown("<br>", unsafe_allow_html=True)
             finally:
                 db.close()
                 
         with tab_detalhes:
-            st.subheader("Consulta e Download do Relatório")
+            st.subheader("Consulta e Download do Relatório Detalhado")
             col_d1, col_c1 = st.columns(2)
             with col_d1:
                 data_consulta = st.date_input("Data da Consulta", value=date.today(), format="DD/MM/YYYY")
@@ -312,8 +314,10 @@ else:
                     dados_tabela = []
                     for a in agendamentos:
                         dados_tabela.append({
-                            "ID Cliente": a.cliente_id,
-                            "Nome Cliente": a.nome_cliente if a.nome_cliente else "Pendente (Excel)",
+                            "Protocolo": a.cliente_id,
+                            "Cliente": a.nome_cliente if a.nome_cliente else "Pendente (Excel)",
+                            "Contato 1": a.contato_1 if a.contato_1 else "-",
+                            "Contato 2": a.contato_2 if a.contato_2 else "-",
                             "Cidade": a.cidade,
                             "Bairro": a.bairro if a.bairro else "-",
                             "Rua": a.rua if a.rua else "-",
@@ -348,7 +352,6 @@ else:
         data_referencia = st.date_input("Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
         
         if arquivo_excel and st.button("Processar e Atualizar Agendamentos"):
-            # Lê a planilha Excel como texto puro
             df = pd.read_excel(arquivo_excel, dtype=str)
             st.write("Visualização da Planilha Enviada:", df.head())
             
@@ -358,12 +361,15 @@ else:
             
             try:
                 for _, row in df.iterrows():
-                    c_id = str(row.get("cliente_id", "")).strip()
+                    # Aceita variações de nome de coluna para o Protocolo/ID
+                    c_id = str(row.get("id", row.get("protocolo", row.get("id_protocolo", row.get("cliente_id", ""))))).strip()
                     
-                    if c_id:
+                    if c_id and c_id.lower() != "nan":
                         ag = db.query(Agendamento).filter_by(cliente_id=c_id, data_agendamento=data_referencia).first()
                         if ag:
-                            ag.nome_cliente = row.get("nome_cliente", None)
+                            ag.nome_cliente = row.get("cliente", row.get("nome_cliente", None))
+                            ag.contato_1 = row.get("contato", row.get("telefone_1", None))
+                            ag.contato_2 = row.get("contat 2", row.get("contato_2", row.get("telefone_2", None)))
                             ag.rua = row.get("rua", None)
                             ag.bairro = row.get("bairro", None)
                             ag.categoria_4 = row.get("categoria_4", None) if ag.tipo_servico == "Reparo" else None
@@ -375,7 +381,7 @@ else:
                 db.commit()
                 st.success(f"Processamento concluído! {atualizados} registros atualizados com sucesso.")
                 if nao_encontrados > 0:
-                    st.info(f"{nao_encontrados} IDs do arquivo Excel não possuíam agendamento cadastrado para a data {data_referencia.strftime('%d/%m/%Y')}.")
+                    st.info(f"{nao_encontrados} Protocolos do arquivo Excel não possuíam agendamento cadastrado para a data {data_referencia.strftime('%d/%m/%Y')}.")
             finally:
                 db.close()
 
