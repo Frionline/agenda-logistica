@@ -100,7 +100,6 @@ else:
                     data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
                 ).first()
                 
-                # Contagem real e dinâmica direto da tabela de Agendamentos
                 agendadas_reais = db.query(Agendamento).filter_by(
                     data_agendamento=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
                 ).count()
@@ -154,14 +153,12 @@ else:
                     idx_serv = SERVICOS.index(agendamento_existente.tipo_servico) if (agendamento_existente and agendamento_existente.tipo_servico in SERVICOS) else 0
                     servico_ag = st.selectbox("Tipo de Serviço", SERVICOS, index=idx_serv)
                 
-                # Busca vagas configuradas para essa cidade e serviço
                 vagas_cadastradas = db.query(DisponibilidadeVaga).filter(
                     DisponibilidadeVaga.cidade == cidade_ag,
                     DisponibilidadeVaga.tipo_servico == servico_ag,
                     DisponibilidadeVaga.data >= date.today()
                 ).all()
                 
-                # Filtra apenas datas/períodos que tenham capacidade disponível
                 vagas_disponiveis = []
                 for v in vagas_cadastradas:
                     agendadas = db.query(Agendamento).filter_by(
@@ -223,7 +220,7 @@ else:
         
         tab_painel, tab_detalhes = st.tabs(["🗓️ Visão 3 Dias (Grade)", "📋 Lista Detalhada de O.S."])
         
-        # --- TAB 1: PAINEL EM GRADE (ESTILO PLANILHA) ---
+        # --- TAB 1: PAINEL EM GRADE (ESTILO PLANILHA COM LISTA DE CLIENTES) ---
         with tab_painel:
             col_c, col_s, col_d = st.columns(3)
             with col_c:
@@ -270,6 +267,27 @@ else:
                     })
                     
                     st.dataframe(df_grade, use_container_width=True, hide_index=True)
+                    
+                    # Detalhamento retrátil dos clientes do dia
+                    clientes_dia = db.query(Agendamento).filter_by(
+                        data_agendamento=dia_atual, cidade=cid_painel, tipo_servico=serv_painel
+                    ).all()
+                    
+                    with st.expander(f"🔍 Ver clientes agendados para {dia_atual.strftime('%d/%m/%Y')} ({len(clientes_dia)} cliente(s))"):
+                        if clientes_dia:
+                            listagem = []
+                            for c in clientes_dia:
+                                listagem.append({
+                                    "ID Cliente": c.cliente_id,
+                                    "Nome": c.nome_cliente if c.nome_cliente else "Aguardando CSV",
+                                    "Período": c.periodo,
+                                    "Observação": c.observacoes if c.observacoes else "-",
+                                    "Status": c.status
+                                })
+                            st.dataframe(pd.DataFrame(listagem), use_container_width=True, hide_index=True)
+                        else:
+                            st.caption("Nenhum cliente agendado para esta cidade e serviço neste dia.")
+                            
                     st.markdown("<br>", unsafe_allow_html=True)
             finally:
                 db.close()
