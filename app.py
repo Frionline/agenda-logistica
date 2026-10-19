@@ -100,12 +100,16 @@ else:
                     data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
                 ).first()
                 
+                # Contagem real e dinâmica direto da tabela de Agendamentos
+                agendadas_reais = db.query(Agendamento).filter_by(
+                    data_agendamento=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
+                ).count()
+                
                 v_atual = registro.vagas_totais if registro else 0
-                v_agendadas = registro.vagas_agendadas if registro else 0
                 
                 with cols[i]:
-                    st.metric(f"Período: {p}", f"Agendadas: {v_agendadas}")
-                    vagas_input[p] = st.number_input(f"Total Vagas - {p}", min_value=v_agendadas, value=v_atual, step=1)
+                    st.metric(f"Período: {p}", f"Agendadas: {agendadas_reais}")
+                    vagas_input[p] = st.number_input(f"Total Vagas - {p}", min_value=agendadas_reais, value=max(v_atual, agendadas_reais), step=1)
 
             if st.button("Salvar Disponibilidade"):
                 for p, qtd in vagas_input.items():
@@ -150,11 +154,25 @@ else:
                     idx_serv = SERVICOS.index(agendamento_existente.tipo_servico) if (agendamento_existente and agendamento_existente.tipo_servico in SERVICOS) else 0
                     servico_ag = st.selectbox("Tipo de Serviço", SERVICOS, index=idx_serv)
                 
-                vagas_disponiveis = db.query(DisponibilidadeVaga).filter(
+                # Busca vagas configuradas para essa cidade e serviço
+                vagas_cadastradas = db.query(DisponibilidadeVaga).filter(
                     DisponibilidadeVaga.cidade == cidade_ag,
                     DisponibilidadeVaga.tipo_servico == servico_ag,
-                    (DisponibilidadeVaga.vagas_totais - DisponibilidadeVaga.vagas_agendadas) > 0
+                    DisponibilidadeVaga.data >= date.today()
                 ).all()
+                
+                # Filtra apenas datas/períodos que tenham capacidade disponível
+                vagas_disponiveis = []
+                for v in vagas_cadastradas:
+                    agendadas = db.query(Agendamento).filter_by(
+                        data_agendamento=v.data, cidade=cidade_ag, tipo_servico=servico_ag, periodo=v.periodo
+                    ).count()
+                    
+                    if agendamento_existente and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
+                        agendadas -= 1
+                        
+                    if (v.vagas_totais - agendadas) > 0:
+                        vagas_disponiveis.append(v)
                 
                 if not vagas_disponiveis:
                     st.error("Não existem vagas disponíveis para esta cidade e serviço no momento.")
@@ -162,32 +180,18 @@ else:
                     opcoes_datas = sorted(list(set([v.data for v in vagas_disponiveis])))
                     data_escolhida = st.selectbox("Selecione a Data Disponível", opcoes_datas, format_func=lambda d: d.strftime("%d/%m/%Y"))
                     
-                    periodos_disponiveis = db.query(DisponibilidadeVaga).filter(
-                        DisponibilidadeVaga.cidade == cidade_ag,
-                        DisponibilidadeVaga.tipo_servico == servico_ag,
-                        DisponibilidadeVaga.data == data_escolhida,
-                        (DisponibilidadeVaga.vagas_totais - DisponibilidadeVaga.vagas_agendadas) > 0
-                    ).all()
+                    periodos_disponiveis = [v for v in vagas_disponiveis if v.data == data_escolhida]
                     
                     periodo_escolhido = st.selectbox(
                         "Selecione o Período",
                         [p.periodo for p in periodos_disponiveis],
-                        format_func=lambda p: f"{p} (Vagas restantes: {[v.vagas_totais - v.vagas_agendadas for v in periodos_disponiveis if v.periodo == p][0]})"
+                        format_func=lambda p: f"{p}"
                     )
                     
                     obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if agendamento_existente else "")
                     
                     if st.button("Confirmar Agendamento"):
                         if agendamento_existente:
-                            vaga_antiga = db.query(DisponibilidadeVaga).filter_by(
-                                data=agendamento_existente.data_agendamento,
-                                cidade=agendamento_existente.cidade,
-                                tipo_servico=agendamento_existente.tipo_servico,
-                                periodo=agendamento_existente.periodo
-                            ).first()
-                            if vaga_antiga and vaga_antiga.vagas_agendadas > 0:
-                                vaga_antiga.vagas_agendadas -= 1
-                            
                             agendamento_existente.cidade = cidade_ag
                             agendamento_existente.tipo_servico = servico_ag
                             agendamento_existente.data_agendamento = data_escolhida
@@ -205,12 +209,6 @@ else:
                                 status="Agendado"
                             )
                             db.add(novo_ag)
-                        
-                        vaga_nova = db.query(DisponibilidadeVaga).filter_by(
-                            data=data_escolhida, cidade=cidade_ag, tipo_servico=servico_ag, periodo=periodo_escolhido
-                        ).first()
-                        if vaga_nova:
-                            vaga_nova.vagas_agendadas += 1
 
                         db.commit()
                         st.success("Agendamento realizado com sucesso!")
@@ -241,7 +239,6 @@ else:
             try:
                 periodos = ["Manhã", "Livre", "Tarde", "Noite"]
                 
-                # Gera o bloco visual para 3 dias consecutivos
                 for i in range(3):
                     dia_atual = data_inicio + timedelta(days=i)
                     st.subheader(f"📅 Dia {dia_atual.strftime('%d/%m/%Y')} ({dia_atual.strftime('%A')})")
@@ -254,12 +251,15 @@ else:
                             data=dia_atual, cidade=cid_painel, tipo_servico=serv_painel, periodo=p
                         ).first()
                         
+                        agendadas_reais = db.query(Agendamento).filter_by(
+                            data_agendamento=dia_atual, cidade=cid_painel, tipo_servico=serv_painel, periodo=p
+                        ).count()
+                        
                         totais = vaga.vagas_totais if vaga else 0
-                        agendadas = vaga.vagas_agendadas if vaga else 0
-                        disponiveis = max(0, totais - agendadas)
+                        disponiveis = max(0, totais - agendadas_reais)
                         
                         disp_row.append(disponiveis)
-                        agend_row.append(agendadas)
+                        agend_row.append(agendadas_reais)
                     
                     df_grade = pd.DataFrame({
                         "STATUS": ["DISPONÍVEIS", "AGENDADAS"],
