@@ -40,8 +40,10 @@ class Agendamento(Base):
     observacoes = Column(String(500), nullable=True)
     status = Column(String(20), default='Agendado')  # 'Agendado', 'Reagendado'
 
-    # Dados preenchidos posteriormente via CSV
+    # Dados preenchidos via Excel (.xlsx)
     nome_cliente = Column(String(150), nullable=True)
+    contato_1 = Column(String(50), nullable=True)
+    contato_2 = Column(String(50), nullable=True)
     rua = Column(String(200), nullable=True)
     bairro = Column(String(100), nullable=True)
     categoria_4 = Column(String(100), nullable=True)
