@@ -32,7 +32,7 @@ class Agendamento(Base):
     __tablename__ = 'agendamentos'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    cliente_id = Column(String(50), nullable=False, index=True)
+    cliente_id = Column(String(50), nullable=False, index=True)  # Protocolo
     cidade = Column(String(100), nullable=False)
     tipo_servico = Column(String(100), nullable=False)
     data_agendamento = Column(Date, nullable=False, index=True)
@@ -42,8 +42,6 @@ class Agendamento(Base):
 
     # Dados preenchidos via Excel (.xlsx)
     nome_cliente = Column(String(150), nullable=True)
-    contato_1 = Column(String(50), nullable=True)
-    contato_2 = Column(String(50), nullable=True)
     rua = Column(String(200), nullable=True)
     bairro = Column(String(100), nullable=True)
     categoria_4 = Column(String(100), nullable=True)
@@ -51,3 +49,19 @@ class Agendamento(Base):
 
     criado_em = Column(DateTime, default=datetime.utcnow)
     atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProtocoloPendente(Base):
+    __tablename__ = 'protocolos_pendentes'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    protocolo = Column(String(50), nullable=False, index=True)
+    nome_cliente = Column(String(150), nullable=True)
+    cidade = Column(String(100), nullable=True)
+    tipo_servico = Column(String(100), nullable=True)
+    rua = Column(String(200), nullable=True)
+    bairro = Column(String(100), nullable=True)
+    categoria_4 = Column(String(100), nullable=True)
+    data_referencia = Column(Date, nullable=False, index=True)
+    status = Column(String(20), default='Pendente')  # 'Pendente', 'Agendado'
+    criado_em = Column(DateTime, default=datetime.utcnow)
