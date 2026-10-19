@@ -399,4 +399,29 @@ else:
         with st.form("form_novo_usuario"):
             st.subheader("Cadastrar Novo Colaborador")
             nome_u = st.text_input("Nome Completo")
-            email_u =
+            email_u = st.text_input("E-mail (Login)")
+            senha_u = st.text_input("Senha Inicial", type="password")
+            perfil_u = st.selectbox("Perfil de Acesso", ["suporte", "gestor_logistica", "admin"])
+            
+            if st.form_submit_button("Cadastrar Usuário"):
+                if nome_u and email_u and senha_u:
+                    db = get_db()
+                    try:
+                        existe = db.query(Usuario).filter_by(email=email_u.strip().lower()).first()
+                        if existe:
+                            st.error("Este e-mail já está cadastrado!")
+                        else:
+                            novo_u = Usuario(
+                                nome=nome_u,
+                                email=email_u.strip().lower(),
+                                senha_hash=hash_senha(senha_u),
+                                perfil=perfil_u,
+                                ativo=True
+                            )
+                            db.add(novo_u)
+                            db.commit()
+                            st.success(f"Usuário {nome_u} cadastrado com sucesso!")
+                    finally:
+                        db.close()
+                else:
+                    st.warning("Preencha todos os campos obrigatórios.")
