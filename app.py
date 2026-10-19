@@ -10,6 +10,17 @@ st.set_page_config(page_title="Sistema de Agendamento - Logística", layout="wid
 init_db()
 criar_admin_padrao()
 
+# Lista de Cidades e Serviços Padronizados
+CIDADES = [
+    "Nova Friburgo", "Lumiar", "Bom Jardim", "Duas Barras", "Cordeiro",
+    "Cantagalo", "Macuco", "Trajano", "Madalena", "São Fidelis",
+    "Itaocara", "Cardoso Moreira", "Cambuci", "Italva"
+]
+
+SERVICOS = [
+    "Instalação", "Reparo", "Mudança de Endereço", "Upgrade", "Alteração de Ponto"
+]
+
 if "usuario" not in st.session_state:
     st.session_state.usuario = None
 
@@ -52,10 +63,12 @@ else:
         opcoes_menu.append("1. Gestão de Vagas (Logística)")
     if usr["perfil"] in ["admin", "suporte"]:
         opcoes_menu.append("2. Agendamento (Suporte)")
+    if usr["perfil"] in ["admin", "gestor_logistica", "suporte"]:
+        opcoes_menu.append("3. Agenda de O.S. (Consulta)")
     if usr["perfil"] in ["admin", "gestor_logistica"]:
-        opcoes_menu.append("3. Importação de CSV")
+        opcoes_menu.append("4. Importação de CSV")
     if usr["perfil"] == "admin":
-        opcoes_menu.append("4. Gestão de Usuários")
+        opcoes_menu.append("5. Gestão de Usuários")
 
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu)
 
@@ -67,11 +80,11 @@ else:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            cidade_sel = st.text_input("Cidade", value="Bom Jardim")
+            cidade_sel = st.selectbox("Cidade", CIDADES)
         with col2:
-            servico_sel = st.selectbox("Tipo de Serviço", ["Reparo", "Mudança", "Instalação"])
+            servico_sel = st.selectbox("Tipo de Serviço", SERVICOS)
         with col3:
-            data_sel = st.date_input("Data do Serviço", value=date.today())
+            data_sel = st.date_input("Data do Serviço", value=date.today(), format="DD/MM/YYYY")
 
         st.markdown("### Configuração de Vagas por Período")
         db = get_db()
@@ -131,9 +144,11 @@ else:
                 
                 c1, c2 = st.columns(2)
                 with c1:
-                    cidade_ag = st.text_input("Cidade do Atendimento", value=agendamento_existente.cidade if agendamento_existente else "Bom Jardim")
+                    idx_cid = CIDADES.index(agendamento_existente.cidade) if (agendamento_existente and agendamento_existente.cidade in CIDADES) else 0
+                    cidade_ag = st.selectbox("Cidade do Atendimento", CIDADES, index=idx_cid)
                 with c2:
-                    servico_ag = st.selectbox("Tipo de Serviço", ["Reparo", "Mudança", "Instalação"], index=0)
+                    idx_serv = SERVICOS.index(agendamento_existente.tipo_servico) if (agendamento_existente and agendamento_existente.tipo_servico in SERVICOS) else 0
+                    servico_ag = st.selectbox("Tipo de Serviço", SERVICOS, index=idx_serv)
                 
                 vagas_disponiveis = db.query(DisponibilidadeVaga).filter(
                     DisponibilidadeVaga.cidade == cidade_ag,
@@ -203,13 +218,67 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 3: IMPORTAÇÃO DE CSV
+    # MÓDULO 3: AGENDA DE O.S. (CONSULTA POR DATA)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "3. Importação de CSV":
+    elif menu_selecionado == "3. Agenda de O.S. (Consulta)":
+        st.title("📋 Agenda de Ordens de Serviço (O.S.)")
+        
+        col_d, col_c = st.columns(2)
+        with col_d:
+            data_consulta = st.date_input("Selecione a Data para Consulta", value=date.today(), format="DD/MM/YYYY")
+        with col_c:
+            cidade_filtro = st.selectbox("Filtrar por Cidade", ["Todas"] + CIDADES)
+            
+        db = get_db()
+        try:
+            query = db.query(Agendamento).filter(Agendamento.data_agendamento == data_consulta)
+            if cidade_filtro != "Todas":
+                query = query.filter(Agendamento.cidade == cidade_filtro)
+                
+            agendamentos = query.all()
+            
+            if not agendamentos:
+                st.info(f"Nenhum agendamento encontrado para a data {data_consulta.strftime('%d/%m/%Y')}.")
+            else:
+                st.subheader(f"Agendamentos para {data_consulta.strftime('%d/%m/%Y')} ({len(agendamentos)} O.S.)")
+                
+                dados_tabela = []
+                for a in agendamentos:
+                    dados_tabela.append({
+                        "ID Cliente": a.cliente_id,
+                        "Nome Cliente": a.nome_cliente if a.nome_cliente else "Pendente (CSV)",
+                        "Cidade": a.cidade,
+                        "Bairro": a.bairro if a.bairro else "-",
+                        "Rua": a.rua if a.rua else "-",
+                        "Serviço": a.tipo_servico,
+                        "Período": a.periodo,
+                        "Observações": a.observacoes if a.observacoes else "-",
+                        "Categoria 4": a.categoria_4 if a.categoria_4 else "-",
+                        "Status": a.status,
+                        "Dados Completos": "Sim" if a.dados_completos else "Não"
+                    })
+                
+                df_ag = pd.DataFrame(dados_tabela)
+                st.dataframe(df_ag, use_container_width=True)
+                
+                csv_data = df_ag.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Baixar Relatório do Dia (CSV)",
+                    data=csv_data,
+                    file_name=f"agendamentos_{data_consulta.strftime('%Y_%m_%d')}.csv",
+                    mime="text/csv"
+                )
+        finally:
+            db.close()
+
+    # -------------------------------------------------------------------------
+    # MÓDULO 4: IMPORTAÇÃO DE CSV
+    # -------------------------------------------------------------------------
+    elif menu_selecionado == "4. Importação de CSV":
         st.title("📥 Importação de CSV e Enriquecimento de Dados")
         
         arquivo_csv = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
-        data_referencia = st.date_input("Data de Referência dos Agendamentos", value=date.today())
+        data_referencia = st.date_input("Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
         
         if arquivo_csv and st.button("Processar e Atualizar Agendamentos"):
             df = pd.read_csv(arquivo_csv, dtype=str)
@@ -243,9 +312,9 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO ADMIN: GESTÃO DE USUÁRIOS
+    # MÓDULO 5: GESTÃO DE USUÁRIOS
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "4. Gestão de Usuários":
+    elif menu_selecionado == "5. Gestão de Usuários":
         st.title("👤 Gestão de Usuários e Permissões")
         
         with st.form("form_novo_usuario"):
