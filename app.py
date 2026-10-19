@@ -275,11 +275,13 @@ else:
                         if clientes_dia:
                             listagem = []
                             for c in clientes_dia:
+                                c1 = getattr(c, 'contato_1', None)
+                                c2 = getattr(c, 'contato_2', None)
                                 listagem.append({
                                     "Protocolo": c.cliente_id,
                                     "Cliente": c.nome_cliente if c.nome_cliente else "Aguardando Excel",
-                                    "Contato 1": c.contato_1 if c.contato_1 else "-",
-                                    "Contato 2": c.contato_2 if c.contato_2 else "-",
+                                    "Contato 1": c1 if c1 else "-",
+                                    "Contato 2": c2 if c2 else "-",
                                     "Período": c.periodo,
                                     "Observação": c.observacoes if c.observacoes else "-",
                                     "Status": c.status
@@ -313,11 +315,13 @@ else:
                 else:
                     dados_tabela = []
                     for a in agendamentos:
+                        c1 = getattr(a, 'contato_1', None)
+                        c2 = getattr(a, 'contato_2', None)
                         dados_tabela.append({
                             "Protocolo": a.cliente_id,
                             "Cliente": a.nome_cliente if a.nome_cliente else "Pendente (Excel)",
-                            "Contato 1": a.contato_1 if a.contato_1 else "-",
-                            "Contato 2": a.contato_2 if a.contato_2 else "-",
+                            "Contato 1": c1 if c1 else "-",
+                            "Contato 2": c2 if c2 else "-",
                             "Cidade": a.cidade,
                             "Bairro": a.bairro if a.bairro else "-",
                             "Rua": a.rua if a.rua else "-",
@@ -361,15 +365,16 @@ else:
             
             try:
                 for _, row in df.iterrows():
-                    # Aceita variações de nome de coluna para o Protocolo/ID
                     c_id = str(row.get("id", row.get("protocolo", row.get("id_protocolo", row.get("cliente_id", ""))))).strip()
                     
                     if c_id and c_id.lower() != "nan":
                         ag = db.query(Agendamento).filter_by(cliente_id=c_id, data_agendamento=data_referencia).first()
                         if ag:
                             ag.nome_cliente = row.get("cliente", row.get("nome_cliente", None))
-                            ag.contato_1 = row.get("contato", row.get("telefone_1", None))
-                            ag.contato_2 = row.get("contat 2", row.get("contato_2", row.get("telefone_2", None)))
+                            if hasattr(ag, 'contato_1'):
+                                ag.contato_1 = row.get("contato", row.get("telefone_1", None))
+                            if hasattr(ag, 'contato_2'):
+                                ag.contato_2 = row.get("contat 2", row.get("contato_2", row.get("telefone_2", None)))
                             ag.rua = row.get("rua", None)
                             ag.bairro = row.get("bairro", None)
                             ag.categoria_4 = row.get("categoria_4", None) if ag.tipo_servico == "Reparo" else None
@@ -394,29 +399,4 @@ else:
         with st.form("form_novo_usuario"):
             st.subheader("Cadastrar Novo Colaborador")
             nome_u = st.text_input("Nome Completo")
-            email_u = st.text_input("E-mail (Login)")
-            senha_u = st.text_input("Senha Inicial", type="password")
-            perfil_u = st.selectbox("Perfil de Acesso", ["suporte", "gestor_logistica", "admin"])
-            
-            if st.form_submit_button("Cadastrar Usuário"):
-                if nome_u and email_u and senha_u:
-                    db = get_db()
-                    try:
-                        existe = db.query(Usuario).filter_by(email=email_u.strip().lower()).first()
-                        if existe:
-                            st.error("Este e-mail já está cadastrado!")
-                        else:
-                            novo_u = Usuario(
-                                nome=nome_u,
-                                email=email_u.strip().lower(),
-                                senha_hash=hash_senha(senha_u),
-                                perfil=perfil_u,
-                                ativo=True
-                            )
-                            db.add(novo_u)
-                            db.commit()
-                            st.success(f"Usuário {nome_u} cadastrado com sucesso!")
-                    finally:
-                        db.close()
-                else:
-                    st.warning("Preencha todos os campos obrigatórios.")
+            email_u =
