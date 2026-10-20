@@ -91,12 +91,20 @@ st.markdown("""
     .frionline-badge {
         background-color: #FF6600;
         color: white;
-        padding: 6px 16px;
-        border-radius: 20px;
-        font-size: 13px;
+        padding: 8px 20px;
+        border-radius: 25px;
+        font-size: 14px;
         font-weight: 700;
         letter-spacing: 1px;
         display: inline-block;
+        box-shadow: 0px 4px 10px rgba(255, 102, 0, 0.3);
+    }
+    
+    .badge-container {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding-top: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -150,18 +158,18 @@ def fazer_logout():
 # -----------------------------------------------------------------------------
 if st.session_state.usuario is None:
     
-    # Cabeçalho do App com Logo Expandido / Destaque de Marca
-    col_logo1, col_logo2 = st.columns([2, 3])
+    # Cabeçalho do App com Logo Ampliado e Badge Centralizado
+    col_logo1, col_logo2 = st.columns([1.8, 2], vertical_alignment="center")
     with col_logo1:
         if os.path.exists("logo.png"):
-            st.image("logo.png", width=320)
+            st.image("logo.png", width=420)
         elif os.path.exists("logo.jpg"):
-            st.image("logo.jpg", width=320)
+            st.image("logo.jpg", width=420)
         else:
-            st.markdown("<h1 style='color: #FF6600; font-size: 3.2rem; font-weight: 900; margin: 0; letter-spacing: -1px;'>FRIONLINE</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 style='color: #FF6600; font-size: 3.8rem; font-weight: 900; margin: 0; letter-spacing: -1px;'>FRIONLINE</h1>", unsafe_allow_html=True)
     with col_logo2:
         st.markdown("""
-            <div style="padding-top: 18px;">
+            <div class="badge-container">
                 <span class="frionline-badge">SISTEMA CORPORATIVO FRIONLINE</span>
             </div>
         """, unsafe_allow_html=True)
