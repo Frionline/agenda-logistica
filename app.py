@@ -516,122 +516,127 @@ else:
         tab_imp, tab_del = st.tabs(["📥 Importar Excel", "🗑️ Gerenciar / Excluir Registros"])
         
         with tab_imp:
-            arquivo_excel = st.file_uploader("Selecione o arquivo Excel (.xlsx ou .xls)", type=["xlsx", "xls"])
-            data_referencia = st.date_input("Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
+            arquivo_excel = st.file_uploader("1. Selecione o arquivo Excel (.xlsx ou .xls)", type=["xlsx", "xls"])
+            data_referencia = st.date_input("2. Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
             
-            if arquivo_excel and st.button("Processar e Atualizar Agendamentos"):
-                df = pd.read_excel(arquivo_excel, dtype=str)
-                st.write("Visualização da Planilha Enviada:", df.head())
-                
-                db = get_db()
-                atualizados = 0
-                ignorados_recolhimento = 0
-                novos_pendentes = 0
-                
-                try:
-                    todos_agendamentos = db.query(Agendamento).all()
+            btn_processar = st.button("🚀 Processar e Atualizar Agendamentos", type="primary")
+            
+            if btn_processar:
+                if not arquivo_excel:
+                    st.warning("⚠️ Por favor, selecione e faça o upload de um arquivo Excel acima primeiro.")
+                else:
+                    df = pd.read_excel(arquivo_excel, dtype=str)
+                    st.write("Visualização da Planilha Enviada:", df.head())
                     
-                    for _, row in df.iterrows():
-                        # 1. Ignorar se "Tipo Geral" (Coluna O) for "Recolhimento"
-                        tipo_geral = str(row.get('Tipo Geral', row.get('Tipo geral', ''))).strip()
-                        if tipo_geral.lower() == 'recolhimento':
-                            ignorados_recolhimento += 1
-                            continue
+                    db = get_db()
+                    atualizados = 0
+                    ignorados_recolhimento = 0
+                    novos_pendentes = 0
+                    
+                    try:
+                        todos_agendamentos = db.query(Agendamento).all()
                         
-                        # 2. Extrai os 3 IDs possíveis da linha
-                        proto_excel = limpar_str(row.get('Protocolo'))
-                        id_cli_excel = limpar_str(row.get('ID Cliente'))
-                        id_con_excel = limpar_str(row.get('ID Contrato'))
-                        
-                        ids_linha = [i for i in [proto_excel, id_cli_excel, id_con_excel] if i != ""]
-                        
-                        if not ids_linha:
-                            continue
+                        for _, row in df.iterrows():
+                            # 1. Ignorar se "Tipo Geral" (Coluna O) for "Recolhimento"
+                            tipo_geral = str(row.get('Tipo Geral', row.get('Tipo geral', ''))).strip()
+                            if tipo_geral.lower() == 'recolhimento':
+                                ignorados_recolhimento += 1
+                                continue
                             
-                        # 3. Busca agendamento existente batendo com qualquer um dos 3 IDs
-                        ag = None
-                        for a_item in todos_agendamentos:
-                            ids_banco = [limpar_str(a_item.cliente_id), limpar_str(getattr(a_item, 'id_cliente', '')), limpar_str(getattr(a_item, 'id_contrato', ''))]
-                            if any(i in ids_linha for i in ids_banco if i != ""):
-                                ag = a_item
-                                break
-                        
-                        # Extração dos dados cadastrais
-                        nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
-                        rua_base = str(row.get('Rua', '')).strip() if pd.notna(row.get('Rua')) else ""
-                        num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
-                        rua_c = f"{rua_base}, {num_rua}".strip(", ") if rua_base else None
-                        bairro_c = str(row.get('Bairro', '')).strip() if pd.notna(row.get('Bairro')) else None
-                        cidade_c = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
-                        servico_c = str(row.get('Catálogo', row.get('Tipo Geral', ''))).strip() if pd.notna(row.get('Catálogo', row.get('Tipo Geral', None))) else None
-                        cat_4 = str(row.get('Categoria 4', '')).strip() if pd.notna(row.get('Categoria 4')) else None
-                        criador_ak = str(row.get('Criador', '')).strip() if pd.notna(row.get('Criador')) else None
-                        
-                        if ag:
-                            if nome_c: ag.nome_cliente = nome_c
-                            if rua_c: ag.rua = rua_c
-                            if bairro_c: ag.bairro = bairro_c
-                            if cat_4 and ag.tipo_servico == "Reparo": ag.categoria_4 = cat_4
-                            ag.agendado_por = ag.agendado_por or usr["nome"]
-                            if criador_ak: ag.criador_excel = criador_ak
-                            ag.dados_completos = True
-                            atualizados += 1
-                        else:
-                            main_id = proto_excel or id_cli_excel or id_con_excel
+                            # 2. Extrai os 3 IDs possíveis da linha
+                            proto_excel = limpar_str(row.get('Protocolo'))
+                            id_cli_excel = limpar_str(row.get('ID Cliente'))
+                            id_con_excel = limpar_str(row.get('ID Contrato'))
                             
-                            # Upsert no ProtocoloPendente
-                            existe_p = db.query(ProtocoloPendente).filter(
-                                (ProtocoloPendente.protocolo == main_id) |
-                                (ProtocoloPendente.id_cliente == id_cli_excel) |
-                                (ProtocoloPendente.id_contrato == id_con_excel)
-                            ).first()
+                            ids_linha = [i for i in [proto_excel, id_cli_excel, id_con_excel] if i != ""]
                             
-                            if existe_p:
-                                existe_p.protocolo = main_id
-                                existe_p.id_cliente = id_cli_excel
-                                existe_p.id_contrato = id_con_excel
-                                if nome_c: existe_p.nome_cliente = nome_c
-                                if cidade_c: existe_p.cidade = cidade_c
-                                if servico_c: existe_p.tipo_servico = servico_c
-                                if rua_c: existe_p.rua = rua_c
-                                if bairro_c: existe_p.bairro = bairro_c
-                                if cat_4: existe_p.categoria_4 = cat_4
-                                if criador_ak: existe_p.criador_excel = criador_ak
-                                if existe_p.status != "Agendado":
-                                    existe_p.status = "Pendente"
-                                novos_pendentes += 1
+                            if not ids_linha:
+                                continue
+                                
+                            # 3. Busca agendamento existente batendo com qualquer um dos 3 IDs
+                            ag = None
+                            for a_item in todos_agendamentos:
+                                ids_banco = [limpar_str(a_item.cliente_id), limpar_str(getattr(a_item, 'id_cliente', '')), limpar_str(getattr(a_item, 'id_contrato', ''))]
+                                if any(i in ids_linha for i in ids_banco if i != ""):
+                                    ag = a_item
+                                    break
+                            
+                            # Extração dos dados cadastrais
+                            nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
+                            rua_base = str(row.get('Rua', '')).strip() if pd.notna(row.get('Rua')) else ""
+                            num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
+                            rua_c = f"{rua_base}, {num_rua}".strip(", ") if rua_base else None
+                            bairro_c = str(row.get('Bairro', '')).strip() if pd.notna(row.get('Bairro')) else None
+                            cidade_c = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
+                            servico_c = str(row.get('Catálogo', row.get('Tipo Geral', ''))).strip() if pd.notna(row.get('Catálogo', row.get('Tipo Geral', None))) else None
+                            cat_4 = str(row.get('Categoria 4', '')).strip() if pd.notna(row.get('Categoria 4')) else None
+                            criador_ak = str(row.get('Criador', '')).strip() if pd.notna(row.get('Criador')) else None
+                            
+                            if ag:
+                                if nome_c: ag.nome_cliente = nome_c
+                                if rua_c: ag.rua = rua_c
+                                if bairro_c: ag.bairro = bairro_c
+                                if cat_4 and ag.tipo_servico == "Reparo": ag.categoria_4 = cat_4
+                                ag.agendado_por = ag.agendado_por or usr["nome"]
+                                if criador_ak: ag.criador_excel = criador_ak
+                                ag.dados_completos = True
+                                atualizados += 1
                             else:
-                                novo_p = ProtocoloPendente(
-                                    protocolo=main_id,
-                                    id_cliente=id_cli_excel,
-                                    id_contrato=id_con_excel,
-                                    nome_cliente=nome_c,
-                                    cidade=cidade_c,
-                                    tipo_servico=servico_c,
-                                    rua=rua_c,
-                                    bairro=bairro_c,
-                                    categoria_4=cat_4,
-                                    agendado_por=usr["nome"],
-                                    criador_excel=criador_ak,
-                                    data_referencia=data_referencia,
-                                    status="Pendente"
-                                )
-                                db.add(novo_p)
-                                novos_pendentes += 1
+                                main_id = proto_excel or id_cli_excel or id_con_excel
+                                
+                                # Upsert no ProtocoloPendente
+                                existe_p = db.query(ProtocoloPendente).filter(
+                                    (ProtocoloPendente.protocolo == main_id) |
+                                    (ProtocoloPendente.id_cliente == id_cli_excel) |
+                                    (ProtocoloPendente.id_contrato == id_con_excel)
+                                ).first()
+                                
+                                if existe_p:
+                                    existe_p.protocolo = main_id
+                                    existe_p.id_cliente = id_cli_excel
+                                    existe_p.id_contrato = id_con_excel
+                                    if nome_c: existe_p.nome_cliente = nome_c
+                                    if cidade_c: existe_p.cidade = cidade_c
+                                    if servico_c: existe_p.tipo_servico = servico_c
+                                    if rua_c: existe_p.rua = rua_c
+                                    if bairro_c: existe_p.bairro = bairro_c
+                                    if cat_4: existe_p.categoria_4 = cat_4
+                                    if criador_ak: existe_p.criador_excel = criador_ak
+                                    if existe_p.status != "Agendado":
+                                        existe_p.status = "Pendente"
+                                    novos_pendentes += 1
+                                else:
+                                    novo_p = ProtocoloPendente(
+                                        protocolo=main_id,
+                                        id_cliente=id_cli_excel,
+                                        id_contrato=id_con_excel,
+                                        nome_cliente=nome_c,
+                                        cidade=cidade_c,
+                                        tipo_servico=servico_c,
+                                        rua=rua_c,
+                                        bairro=bairro_c,
+                                        categoria_4=cat_4,
+                                        agendado_por=usr["nome"],
+                                        criador_excel=criador_ak,
+                                        data_referencia=data_referencia,
+                                        status="Pendente"
+                                    )
+                                    db.add(novo_p)
+                                    novos_pendentes += 1
 
-                    db.commit()
-                    
-                    st.markdown("---")
-                    col_res1, col_res2, col_res3 = st.columns(3)
-                    col_res1.metric("🟢 Agendamentos Enriquecidos", f"{atualizados} O.S.")
-                    col_res2.metric("🟡 Salvos em Pendências", f"{novos_pendentes} O.S.")
-                    col_res3.metric("⚪ Ignorados (Recolhimento)", f"{ignorados_recolhimento} O.S.")
-                    
-                    if novos_pendentes > 0:
-                        st.warning(f"⚠️ **{novos_pendentes} protocolo(s)** do Excel foram carregados na **📌 Central de Pendências de Agendamento**!")
+                        db.commit()
+                        
+                        st.markdown("---")
+                        col_res1, col_res2, col_res3 = st.columns(3)
+                        col_res1.metric("🟢 Agendamentos Enriquecidos", f"{atualizados} O.S.")
+                        col_res2.metric("🟡 Salvos em Pendências", f"{novos_pendentes} O.S.")
+                        col_res3.metric("⚪ Ignorados (Recolhimento)", f"{ignorados_recolhimento} O.S.")
+                        
+                        if novos_pendentes > 0:
+                            st.warning(f"⚠️ **{novos_pendentes} protocolo(s)** do Excel foram carregados na **📌 Central de Pendências de Agendamento**!")
 
-                finally:
-                    db.close()
+                    finally:
+                        db.close()
 
         with tab_del:
             st.subheader("Exclusão e Limpeza de Dados Importados")
