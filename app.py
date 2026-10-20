@@ -82,7 +82,7 @@ st.markdown("""
         margin-bottom: 1.5rem;
     }
     
-    /* FIX COMPLETO PARA A BARRA LATERAL (SIDEBAR) EM DARK MODE */
+    /* BARRA LATERAL (SIDEBAR) EM DARK MODE */
     section[data-testid="stSidebar"] {
         background-color: #1E293B !important;
         border-right: 1px solid #334155 !important;
@@ -279,6 +279,9 @@ else:
         opcoes_menu.append("5. Importação de Excel (.xlsx / .xls)")
     if usr["perfil"] == "admin":
         opcoes_menu.append("6. Gestão de Usuários")
+    
+    # Opção disponível para todos os colaboradores logados
+    opcoes_menu.append("🔑 Alterar Minha Senha")
 
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu)
 
@@ -923,3 +926,41 @@ else:
                         db.close()
                 else:
                     st.warning("Preencha todos os campos obrigatórios.")
+
+    # -------------------------------------------------------------------------
+    # MÓDULO 7: ALTERAR MINHA SENHA (DISPONÍVEL PARA TODOS OS COLABORADORES)
+    # -------------------------------------------------------------------------
+    elif menu_selecionado == "🔑 Alterar Minha Senha":
+        st.title("🔑 Alterar Minha Senha")
+        st.caption(f"Atualize a senha de acesso da conta de **{usr['nome']}** ({usr['email']}).")
+        
+        col_s1, col_s2 = st.columns([1, 1])
+        with col_s1:
+            with st.form("form_alterar_senha_propria"):
+                senha_atual = st.text_input("Senha Atual", type="password", placeholder="Digite sua senha atual")
+                nova_senha = st.text_input("Nova Senha", type="password", placeholder="Digite a nova senha")
+                confirma_nova = st.text_input("Confirmar Nova Senha", type="password", placeholder="Repita a nova senha")
+                
+                btn_mudar = st.form_submit_button("Atualizar Minha Senha", type="primary", use_container_width=True)
+                
+                if btn_mudar:
+                    if not senha_atual or not nova_senha or not confirma_nova:
+                        st.error("Por favor, preencha todos os campos do formulário.")
+                    elif nova_senha != confirma_nova:
+                        st.error("A nova senha e a confirmação não coincidem!")
+                    elif len(nova_senha) < 4:
+                        st.error("A nova senha deve ter no mínimo 4 caracteres.")
+                    else:
+                        db = get_db()
+                        try:
+                            user_db = db.query(Usuario).filter_by(id=usr["id"]).first()
+                            if not user_db:
+                                st.error("Usuário não localizado no banco de dados.")
+                            elif user_db.senha_hash != hash_senha(senha_atual):
+                                st.error("A 'Senha Atual' informada está incorreta.")
+                            else:
+                                user_db.senha_hash = hash_senha(nova_senha)
+                                db.commit()
+                                st.success("🎉 Senha alterada com sucesso! Use sua nova senha no próximo login.")
+                        finally:
+                            db.close()
