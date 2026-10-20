@@ -40,11 +40,13 @@ class Agendamento(Base):
     observacoes = Column(String(500), nullable=True)
     status = Column(String(20), default='Agendado')  # 'Agendado', 'Reagendado'
 
-    # Dados preenchidos via Excel (.xlsx)
+    # Dados preenchidos via Excel (.xlsx / .xls)
     nome_cliente = Column(String(150), nullable=True)
     rua = Column(String(200), nullable=True)
     bairro = Column(String(100), nullable=True)
     categoria_4 = Column(String(100), nullable=True)
+    agendado_por = Column(String(100), nullable=True)     # Quem cadastrou/agendou no sistema
+    criador_excel = Column(String(100), nullable=True)    # Nome vindo da coluna Criador (AK)
     dados_completos = Column(Boolean, default=False)
 
     criado_em = Column(DateTime, default=datetime.utcnow)
@@ -62,6 +64,8 @@ class ProtocoloPendente(Base):
     rua = Column(String(200), nullable=True)
     bairro = Column(String(100), nullable=True)
     categoria_4 = Column(String(100), nullable=True)
+    agendado_por = Column(String(100), nullable=True)
+    criador_excel = Column(String(100), nullable=True)    # Coluna Criador (AK)
     data_referencia = Column(Date, nullable=False, index=True)
-    status = Column(String(20), default='Pendente')  # 'Pendente', 'Agendado'
+    status = Column(String(20), default='Pendente')
     criado_em = Column(DateTime, default=datetime.utcnow)
