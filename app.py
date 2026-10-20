@@ -21,7 +21,7 @@ SERVICOS = [
     "Reparo", "Instalação", "Mudança de Endereço", "Upgrade", "Alteração de Ponto"
 ]
 
-def limpar_protocolo(val):
+def limpar_str(val):
     if pd.isna(val) or val is None:
         return ""
     val_str = str(val).strip()
@@ -70,13 +70,15 @@ else:
     if usr["perfil"] in ["admin", "gestor_logistica"]:
         opcoes_menu.append("1. Gestão de Vagas (Logística)")
     if usr["perfil"] in ["admin", "suporte"]:
-        opcoes_menu.append("2. Agendamento (Suporte)")
+        opcoes_menu.append("2. Agendamento Manual (Suporte)")
     if usr["perfil"] in ["admin", "gestor_logistica", "suporte"]:
-        opcoes_menu.append("3. Painel de Agenda (3 Dias)")
+        opcoes_menu.append("3. 📌 Central de Pendências de Agendamento")
+    if usr["perfil"] in ["admin", "gestor_logistica", "suporte"]:
+        opcoes_menu.append("4. Painel de Agenda (3 Dias)")
     if usr["perfil"] in ["admin", "gestor_logistica"]:
-        opcoes_menu.append("4. Importação de Excel (.xlsx / .xls)")
+        opcoes_menu.append("5. Importação de Excel (.xlsx / .xls)")
     if usr["perfil"] == "admin":
-        opcoes_menu.append("5. Gestão de Usuários")
+        opcoes_menu.append("6. Gestão de Usuários")
 
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu)
 
@@ -138,37 +140,24 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 2: AGENDAMENTO PELO SUPORTE
+    # MÓDULO 2: AGENDAMENTO MANUAL (SUPORTE)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "2. Agendamento (Suporte)":
-        st.title("🎧 Central de Agendamentos e Reagendamentos")
+    elif menu_selecionado == "2. Agendamento Manual (Suporte)":
+        st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
         
         db = get_db()
         try:
-            # --- ÁREA DE PENDENTES DE AGENDAMENTO (ORIGEM: EXCEL) ---
-            pendentes = db.query(ProtocoloPendente).filter_by(status="Pendente").all()
-            if pendentes:
-                with st.expander(f"📌 **Área de Pendentes de Agendamento ({len(pendentes)} protocolos aguardando)**", expanded=True):
-                    st.info("Estes protocolos vieram do Excel importado e ainda não possuem vaga reservada. Digite o número do protocolo abaixo para agendar.")
-                    
-                    dados_p = []
-                    for p in pendentes:
-                        dados_p.append({
-                            "Protocolo": p.protocolo,
-                            "Cliente": p.nome_cliente if p.nome_cliente else "-",
-                            "Cidade/Região": p.cidade if p.cidade else "-",
-                            "Serviço": p.tipo_servico if p.tipo_servico else "-",
-                            "Criador (Excel)": p.criador_excel if getattr(p, 'criador_excel', None) else "-",
-                            "Data Ref. Excel": p.data_referencia.strftime('%d/%m/%Y')
-                        })
-                    st.dataframe(pd.DataFrame(dados_p), use_container_width=True, hide_index=True)
-            
-            st.markdown("---")
-            cliente_id_input = st.text_input("ID do Protocolo", help="Digite o número do protocolo para pesquisar agendamentos existentes")
-            cliente_id = limpar_protocolo(cliente_id_input)
+            cliente_id_input = st.text_input("ID do Protocolo / Contrato / Cliente", help="Digite o número para pesquisar agendamentos existentes")
+            cliente_id = limpar_str(cliente_id_input)
             
             if cliente_id:
-                agendamento_existente = db.query(Agendamento).filter_by(cliente_id=cliente_id).first()
+                todos_ag = db.query(Agendamento).all()
+                agendamento_existente = None
+                for a_item in todos_ag:
+                    if cliente_id in [limpar_str(a_item.cliente_id), limpar_str(a_item.id_cliente), limpar_str(a_item.id_contrato)]:
+                        agendamento_existente = a_item
+                        break
+                        
                 dados_pendente = db.query(ProtocoloPendente).filter_by(protocolo=cliente_id, status="Pendente").first()
                 
                 if agendamento_existente:
@@ -258,9 +247,136 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 3: PAINEL DE AGENDA (VISUALIZAÇÃO 3 DIAS + RELATÓRIO)
+    # MÓDULO 3: CENTRAL DE PENDÊNCIAS DE AGENDAMENTO (NOVO!)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "3. Painel de Agenda (3 Dias)":
+    elif menu_selecionado == "3. 📌 Central de Pendências de Agendamento":
+        st.title("📌 Central de Protocolos Pendentes de Agendamento")
+        st.caption("Protocolos importados do Excel que ainda não possuem data/período agendados no sistema.")
+        
+        db = get_db()
+        try:
+            pendentes = db.query(ProtocoloPendente).filter_by(status="Pendente").all()
+            
+            if not pendentes:
+                st.balloons()
+                st.success("🎉 Não há protocolos pendentes de agendamento no momento! Todos os casos foram agendados.")
+            else:
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Pendentes", f"{len(pendentes)} O.S.")
+                
+                cidades_p = set([p.cidade for p in pendentes if p.cidade])
+                m2.metric("Cidades Envolvidas", f"{len(cidades_p)} cidades")
+                
+                servicos_p = set([p.tipo_servico for p in pendentes if p.tipo_servico])
+                m3.metric("Tipos de Serviço", f"{len(servicos_p)} tipos")
+                
+                st.markdown("---")
+                st.subheader("📋 Lista de Protocolos Aguardando Vaga")
+                
+                dados_p = []
+                for p in pendentes:
+                    dados_p.append({
+                        "Protocolo": p.protocolo,
+                        "ID Cliente": p.id_cliente or "-",
+                        "ID Contrato": p.id_contrato or "-",
+                        "Cliente": p.nome_cliente or "Sem nome",
+                        "Cidade/Região": p.cidade or "-",
+                        "Serviço": p.tipo_servico or "-",
+                        "Endereço": f"{p.rua or '-'}, {p.bairro or '-'}",
+                        "Criador (AK)": p.criador_excel or "-",
+                        "Data Ref. Excel": p.data_referencia.strftime('%d/%m/%Y')
+                    })
+                
+                st.dataframe(pd.DataFrame(dados_p), use_container_width=True)
+                
+                st.markdown("---")
+                st.subheader("⚡ Agendar Protocolo Pendente em 1 Clique")
+                
+                # Monta lista amigável para a caixa de seleção
+                opcoes_pendentes = {
+                    f"Protocolo: {p.protocolo} | Cliente: {p.nome_cliente or 'Sem nome'} | {p.cidade or 'Cidade N/D'} ({p.tipo_servico or 'Serviço N/D'})": p
+                    for p in pendentes
+                }
+                
+                selecao = st.selectbox("Selecione o Protocolo que deseja agendar agora:", list(opcoes_pendentes.keys()))
+                p_sel = opcoes_pendentes[selecao]
+                
+                with st.form("form_agendar_pendente"):
+                    c_info1, c_info2 = st.columns(2)
+                    with c_info1:
+                        st.markdown(f"**Protocolo:** `{p_sel.protocolo}`")
+                        st.markdown(f"**Cliente:** {p_sel.nome_cliente or '-'}")
+                        st.markdown(f"**Endereço:** {p_sel.rua or '-'}, {p_sel.bairro or '-'}")
+                    with c_info2:
+                        st.markdown(f"**Criador (Coluna AK):** {p_sel.criador_excel or '-'}")
+                        
+                        cid_padrao = p_sel.cidade if (p_sel.cidade in CIDADES) else CIDADES[0]
+                        idx_c = CIDADES.index(cid_padrao)
+                        cidade_confirm = st.selectbox("Confirmar Cidade", CIDADES, index=idx_c)
+                        
+                        serv_padrao = p_sel.tipo_servico if (p_sel.tipo_servico in SERVICOS) else SERVICOS[0]
+                        idx_s = SERVICOS.index(serv_padrao) if serv_padrao in SERVICOS else 0
+                        servico_confirm = st.selectbox("Confirmar Serviço", SERVICOS, index=idx_s)
+                    
+                    # Busca vagas disponíveis para essa cidade e serviço
+                    vagas_cad = db.query(DisponibilidadeVaga).filter(
+                        DisponibilidadeVaga.cidade == cidade_confirm,
+                        DisponibilidadeVaga.tipo_servico == servico_confirm,
+                        DisponibilidadeVaga.data >= date.today()
+                    ).all()
+                    
+                    vagas_disp = []
+                    for v in vagas_cad:
+                        ag_qtd = db.query(Agendamento).filter_by(
+                            data_agendamento=v.data, cidade=cidade_confirm, tipo_servico=servico_confirm, periodo=v.periodo
+                        ).count()
+                        if (v.vagas_totais - ag_qtd) > 0:
+                            vagas_disp.append(v)
+                            
+                    if not vagas_disp:
+                        st.error("⚠️ Não existem vagas cadastradas ou disponíveis para esta cidade e serviço na Gestão de Vagas.")
+                        btn_agendar = st.form_submit_button("Confirmar Agendamento", disabled=True)
+                    else:
+                        datas_opt = sorted(list(set([v.data for v in vagas_disp])))
+                        data_sel = st.selectbox("Escolha a Data do Agendamento", datas_opt, format_func=lambda d: d.strftime("%d/%m/%Y"))
+                        
+                        periodos_opt = [v.periodo for v in vagas_disp if v.data == data_sel]
+                        periodo_sel = st.selectbox("Escolha o Período", periodos_opt)
+                        
+                        obs_sel = st.text_input("Observações do Agendamento")
+                        btn_agendar = st.form_submit_button(" Confirmar e Agendar Protocolo", type="primary")
+                        
+                        if btn_agendar:
+                            novo_a = Agendamento(
+                                cliente_id=p_sel.protocolo,
+                                id_cliente=p_sel.id_cliente,
+                                id_contrato=p_sel.id_contrato,
+                                cidade=cidade_confirm,
+                                tipo_servico=servico_confirm,
+                                data_agendamento=data_sel,
+                                periodo=periodo_sel,
+                                observacoes=obs_sel,
+                                status="Agendado",
+                                agendado_por=usr["nome"],
+                                criador_excel=p_sel.criador_excel,
+                                nome_cliente=p_sel.nome_cliente,
+                                rua=p_sel.rua,
+                                bairro=p_sel.bairro,
+                                categoria_4=p_sel.categoria_4,
+                                dados_completos=True
+                            )
+                            db.add(novo_a)
+                            p_sel.status = "Agendado"
+                            db.commit()
+                            st.success(f"✅ Protocolo {p_sel.protocolo} agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!")
+                            st.rerun()
+        finally:
+            db.close()
+
+    # -------------------------------------------------------------------------
+    # MÓDULO 4: PAINEL DE AGENDA (VISUALIZAÇÃO 3 DIAS + RELATÓRIO)
+    # -------------------------------------------------------------------------
+    elif menu_selecionado == "4. Painel de Agenda (3 Dias)":
         st.title("📊 Painel da Agenda de Serviços")
         
         tab_painel, tab_detalhes = st.tabs(["🗓️ Visão 3 Dias (Grade)", "📋 Lista Detalhada de O.S."])
@@ -388,9 +504,9 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 4: IMPORTAÇÃO E GERENCIAMENTO DE EXCEL (.XLSX / .XLS)
+    # MÓDULO 5: IMPORTAÇÃO E GERENCIAMENTO DE EXCEL (.XLSX / .XLS)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "4. Importação de Excel (.xlsx / .xls)":
+    elif menu_selecionado == "5. Importação de Excel (.xlsx / .xls)":
         st.title("📥 Importação de Planilha e Gerenciamento de Dados")
         
         tab_imp, tab_del = st.tabs(["📥 Importar Excel", "🗑️ Gerenciar / Excluir Registros"])
@@ -400,101 +516,94 @@ else:
             data_referencia = st.date_input("Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
             
             if arquivo_excel and st.button("Processar e Atualizar Agendamentos"):
-                # Lê o Excel mantendo os valores originais em texto
                 df = pd.read_excel(arquivo_excel, dtype=str)
                 st.write("Visualização da Planilha Enviada:", df.head())
                 
                 db = get_db()
                 atualizados = 0
                 ignorados_recolhimento = 0
-                protocolos_sem_agendamento = []
+                novos_pendentes = 0
                 
                 try:
+                    todos_agendamentos = db.query(Agendamento).all()
+                    
                     for _, row in df.iterrows():
-                        # 1. Checa Coluna O (Tipo Geral / Recolhimento)
-                        tipo_geral_val = None
-                        for col_nome in ["Tipo geral", "Tipo Geral", "TIPO GERAL", "tipo geral"]:
-                            if col_nome in df.columns:
-                                tipo_geral_val = row.get(col_nome)
-                                break
-                        if tipo_geral_val is None and len(row) > 14:
-                            tipo_geral_val = row.iloc[14]
-                            
-                        if tipo_geral_val and str(tipo_geral_val).strip().lower() == "recolhimento":
+                        # 1. Ignorar se "Tipo Geral" (Coluna O) for "Recolhimento"
+                        tipo_geral = str(row.get('Tipo Geral', row.get('Tipo geral', ''))).strip()
+                        if tipo_geral.lower() == 'recolhimento':
                             ignorados_recolhimento += 1
                             continue
                         
-                        # 2. Identifica o Protocolo / ID
-                        raw_id = None
-                        for col_id in ["id", "protocolo", "id_protocolo", "cliente_id", "ID", "Protocolo"]:
-                            if col_id in df.columns:
-                                raw_id = row.get(col_id)
-                                break
-                        if raw_id is None and len(row) > 0:
-                            raw_id = row.iloc[0]
-                            
-                        c_id = limpar_protocolo(raw_id)
+                        # 2. Extrai os 3 IDs possíveis da linha
+                        proto_excel = limpar_str(row.get('Protocolo'))
+                        id_cli_excel = limpar_str(row.get('ID Cliente'))
+                        id_con_excel = limpar_str(row.get('ID Contrato'))
                         
-                        if c_id and c_id.lower() != "nan":
-                            # 3. Busca nome do Criador (Coluna AK - index 36 ou nome 'Criador')
-                            criador_val = None
-                            for col_cr in ["Criador", "criador", "CRIADOR"]:
-                                if col_cr in df.columns:
-                                    criador_val = row.get(col_cr)
-                                    break
-                            if criador_val is None and len(row) > 36:
-                                criador_val = row.iloc[36]
-                            criador_str = str(criador_val).strip() if (criador_val and str(criador_val).lower() != 'nan') else None
+                        ids_linha = [i for i in [proto_excel, id_cli_excel, id_con_excel] if i != ""]
+                        
+                        if not ids_linha:
+                            continue
                             
-                            # Busca agendamento cadastrado no sistema
-                            ag = db.query(Agendamento).filter_by(cliente_id=c_id, data_agendamento=data_referencia).first()
-                            if not ag: # Tenta buscar o protocolo sem travar na data exata
-                                ag = db.query(Agendamento).filter_by(cliente_id=c_id).first()
-                            
-                            nome_c = str(row.get("cliente", row.get("nome_cliente", ""))).strip() if row.get("cliente", row.get("nome_cliente", None)) else None
-                            rua_c = str(row.get("rua", "")).strip() if row.get("rua", None) else None
-                            bairro_c = str(row.get("bairro", "")).strip() if row.get("bairro", None) else None
-                            cidade_c = str(row.get("cidade", row.get("regiao", ""))).strip() if row.get("cidade", row.get("regiao", None)) else None
-                            servico_c = str(row.get("servico", row.get("tipo_servico", ""))).strip() if row.get("servico", row.get("tipo_servico", None)) else None
-                            cat_4 = str(row.get("categoria_4", "")).strip() if row.get("categoria_4", None) else None
-                            
-                            if ag:
-                                if nome_c: ag.nome_cliente = nome_c
-                                if rua_c: ag.rua = rua_c
-                                if bairro_c: ag.bairro = bairro_c
-                                if cat_4 and ag.tipo_servico == "Reparo": ag.categoria_4 = cat_4
-                                ag.agendado_por = usr["nome"]
-                                if criador_str: ag.criador_excel = criador_str
-                                ag.dados_completos = True
-                                atualizados += 1
-                            else:
-                                # Cadastra na área de pendentes caso não exista agendamento
-                                existe_p = db.query(ProtocoloPendente).filter_by(protocolo=c_id).first()
-                                if not existe_p:
-                                    novo_p = ProtocoloPendente(
-                                        protocolo=c_id,
-                                        nome_cliente=nome_c,
-                                        cidade=cidade_c,
-                                        tipo_servico=servico_c,
-                                        rua=rua_c,
-                                        bairro=bairro_c,
-                                        categoria_4=cat_4,
-                                        agendado_por=usr["nome"],
-                                        criador_excel=criador_str,
-                                        data_referencia=data_referencia,
-                                        status="Pendente"
-                                    )
-                                    db.add(novo_p)
-                                protocolos_sem_agendamento.append(f"{c_id} ({nome_c or 'Cliente sem nome'})")
+                        # 3. Busca agendamento existente batendo com qualquer um dos 3 IDs
+                        ag = None
+                        for a_item in todos_agendamentos:
+                            id_banco = limpar_str(a_item.cliente_id)
+                            if id_banco in ids_linha:
+                                ag = a_item
+                                break
+                        
+                        # Extração dos dados cadastrais
+                        nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
+                        rua_base = str(row.get('Rua', '')).strip() if pd.notna(row.get('Rua')) else ""
+                        num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
+                        rua_c = f"{rua_base}, {num_rua}".strip(", ") if rua_base else None
+                        bairro_c = str(row.get('Bairro', '')).strip() if pd.notna(row.get('Bairro')) else None
+                        cidade_c = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
+                        servico_c = str(row.get('Catálogo', row.get('Tipo Geral', ''))).strip() if pd.notna(row.get('Catálogo', row.get('Tipo Geral', None))) else None
+                        cat_4 = str(row.get('Categoria 4', '')).strip() if pd.notna(row.get('Categoria 4')) else None
+                        criador_ak = str(row.get('Criador', '')).strip() if pd.notna(row.get('Criador')) else None
+                        
+                        if ag:
+                            if nome_c: ag.nome_cliente = nome_c
+                            if rua_c: ag.rua = rua_c
+                            if bairro_c: ag.bairro = bairro_c
+                            if cat_4 and ag.tipo_servico == "Reparo": ag.categoria_4 = cat_4
+                            ag.agendado_por = ag.agendado_por or usr["nome"]
+                            if criador_ak: ag.criador_excel = criador_ak
+                            ag.dados_completos = True
+                            atualizados += 1
+                        else:
+                            main_id = proto_excel or id_cli_excel or id_con_excel
+                            existe_p = db.query(ProtocoloPendente).filter_by(protocolo=main_id).first()
+                            if not existe_p:
+                                novo_p = ProtocoloPendente(
+                                    protocolo=main_id,
+                                    id_cliente=id_cli_excel,
+                                    id_contrato=id_con_excel,
+                                    nome_cliente=nome_c,
+                                    cidade=cidade_c,
+                                    tipo_servico=servico_c,
+                                    rua=rua_c,
+                                    bairro=bairro_c,
+                                    categoria_4=cat_4,
+                                    agendado_por=usr["nome"],
+                                    criador_excel=criador_ak,
+                                    data_referencia=data_referencia,
+                                    status="Pendente"
+                                )
+                                db.add(novo_p)
+                                novos_pendentes += 1
 
                     db.commit()
                     
-                    st.success(f"✅ Processamento concluído! {atualizados} agendamentos atualizados com sucesso.")
-                    if ignorados_recolhimento > 0:
-                        st.info(f"ℹ️ {ignorados_recolhimento} linha(s) foram ignoradas por serem do tipo 'recolhimento' (Coluna O).")
+                    st.markdown("---")
+                    col_res1, col_res2, col_res3 = st.columns(3)
+                    col_res1.metric("🟢 Agendamentos Enriquecidos", f"{atualizados} O.S.")
+                    col_res2.metric("🟡 Salvos em Pendências", f"{novos_pendentes} O.S.")
+                    col_res3.metric("⚪ Ignorados (Recolhimento)", f"{ignorados_recolhimento} O.S.")
                     
-                    if protocolos_sem_agendamento:
-                        st.warning(f"⚠️ **POPUP / ALERTA DE PROTOCOLOS SEM AGENDAMENTO PREVISTO**\n\nIdentificamos **{len(protocolos_sem_agendamento)} protocolo(s)** no Excel que não possuíam agendamento prévio no sistema para a data {data_referencia.strftime('%d/%m/%Y')}.\n\nEles foram salvos na **📌 Área de Pendentes de Agendamento** no menu do Suporte.\n\n**Protocolos afetados:**\n" + "\n".join([f"- Protocolo: {p}" for p in protocolos_sem_agendamento]))
+                    if novos_pendentes > 0:
+                        st.warning(f"⚠️ **{novos_pendentes} protocolo(s)** do Excel não possuíam agendamento prévio e foram salvos na **📌 Central de Pendências de Agendamento**!")
 
                 finally:
                     db.close()
@@ -534,9 +643,9 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 5: GESTÃO DE USUÁRIOS
+    # MÓDULO 6: GESTÃO DE USUÁRIOS
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "5. Gestão de Usuários":
+    elif menu_selecionado == "6. Gestão de Usuários":
         st.title("👤 Gestão de Usuários e Permissões")
         
         with st.form("form_novo_usuario"):
