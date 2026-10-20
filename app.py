@@ -2,14 +2,104 @@ import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
 from sqlalchemy import or_
+import os
 from database import init_db, get_db
 from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente
 from auth import autenticar_usuario, criar_admin_padrao, hash_senha
 
-st.set_page_config(page_title="Sistema de Agendamento - Logística", layout="wide")
+st.set_page_config(
+    page_title="Frionline - Agendamento Logístico",
+    page_icon="🚛",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 init_db()
 criar_admin_padrao()
+
+# -----------------------------------------------------------------------------
+# ESTILIZAÇÃO CSS PERSONALIZADA (FRIONLINE - ORANGE TECH THEME)
+# -----------------------------------------------------------------------------
+st.markdown("""
+<style>
+    /* Cores e Variáveis Frionline */
+    :root {
+        --primary-orange: #FF6600;
+        --hover-orange: #E05500;
+        --light-orange-bg: #FFF5EF;
+        --dark-navy: #1E293B;
+    }
+    
+    /* Estilização Geral de Botões com Animação e Contorno Laranja */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.25s ease-in-out !important;
+        border: 1.5px solid #CBD5E1 !important;
+        background-color: #FFFFFF !important;
+    }
+    
+    .stButton > button:hover {
+        border-color: #FF6600 !important;
+        color: #FF6600 !important;
+        box-shadow: 0px 4px 14px rgba(255, 102, 0, 0.25) !important;
+        transform: translateY(-2px) !important;
+    }
+    
+    /* Botões Primários com Identidade Frionline */
+    .stButton > button[kind="primary"], button[data-testid="stBaseButton-primary"] {
+        background: linear-gradient(135deg, #FF6600 0%, #E05500 100%) !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0px 3px 8px rgba(255, 102, 0, 0.3) !important;
+    }
+    
+    .stButton > button[kind="primary"]:hover, button[data-testid="stBaseButton-primary"]:hover {
+        background: linear-gradient(135deg, #FF7711 0%, #F06000 100%) !important;
+        border: 1.5px solid #FF8822 !important;
+        color: white !important;
+        box-shadow: 0px 6px 16px rgba(255, 102, 0, 0.45) !important;
+        transform: translateY(-2px) !important;
+    }
+    
+    /* Cards Customizados para Login e Avisos */
+    .hero-container {
+        background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+        padding: 2.2rem;
+        border-radius: 14px;
+        color: white;
+        margin-bottom: 2rem;
+        border-left: 6px solid #FF6600;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25);
+    }
+    
+    .info-card {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #FF6600;
+        padding: 1.25rem;
+        border-radius: 10px;
+        margin-bottom: 1.5rem;
+    }
+    
+    section[data-testid="stSidebar"] {
+        background-color: #F8FAFC;
+        border-right: 1px solid #E2E8F0;
+    }
+    
+    /* Badge Frionline */
+    .frionline-badge {
+        background-color: #FF6600;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        display: inline-block;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Lista de Cidades e Serviços Padronizados
 CIDADES = [
@@ -56,31 +146,91 @@ def fazer_logout():
     st.rerun()
 
 # -----------------------------------------------------------------------------
-# TELA DE LOGIN
+# TELA DE LOGIN (DESIGN CORPORATIVO FRIONLINE)
 # -----------------------------------------------------------------------------
 if st.session_state.usuario is None:
-    st.title("🔐 Acesso ao Sistema")
-    st.subheader("Atendimento e Gestão de Logística")
     
-    with st.form("form_login"):
-        email = st.text_input("E-mail de acesso")
-        senha = st.text_input("Senha", type="password")
-        btn_entrar = st.form_submit_button("Entrar")
-        
-        if btn_entrar:
-            usr = autenticar_usuario(email, senha)
-            if usr:
-                st.session_state.usuario = usr
-                st.success(f"Bem-vindo(a), {usr['nome']}!")
-                st.rerun()
-            else:
-                st.error("E-mail ou senha incorretos (ou usuário inativo).")
+    # Cabeçalho do App com Logo / Branding
+    col_logo1, col_logo2 = st.columns([1.2, 4])
+    with col_logo1:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", width=200)
+        elif os.path.exists("logo.jpg"):
+            st.image("logo.jpg", width=200)
+        else:
+            st.markdown("<h1 style='color: #FF6600; font-weight: 900; margin: 0; letter-spacing: -1px;'>FRIONLINE</h1>", unsafe_allow_html=True)
+    with col_logo2:
+        st.markdown("""
+            <div style="padding-top: 10px;">
+                <span class="frionline-badge">SISTEMA CORPORATIVO FRIONLINE</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Hero Banner Principal
+    st.markdown("""
+        <div class="hero-container">
+            <h1 style="color: #FFFFFF; margin-bottom: 8px; font-size: 2.1rem; font-weight: 800;">
+                🚛 Central de Agendamentos & Operações Logísticas
+            </h1>
+            <p style="color: #CBD5E1; font-size: 1.05rem; margin-bottom: 0px; line-height: 1.5;">
+                Sua plataforma unificada para controle de disponibilidade por cidade, agendamento inteligente de ordens de serviço e acompanhamento técnico em tempo real.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Layout de Login em 2 Colunas
+    col_info, col_login = st.columns([1.1, 0.9], gap="large")
+
+    with col_info:
+        st.markdown("""
+            <div class="info-card">
+                <h3 style="color: #1E293B; margin-top: 0; font-size: 1.25rem;">📌 Acesso Restrito a Colaboradores</h3>
+                <p style="color: #475569; line-height: 1.6; font-size: 0.98rem;">
+                    Para agendar serviços, consultar vagas de logística ou processar planilhas pendentes, efetue seu login ao lado com sua conta corporativa.
+                </p>
+                <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 15px 0;">
+                <ul style="color: #64748B; font-size: 0.92rem; padding-left: 18px; margin-bottom: 0;">
+                    <li style="margin-bottom: 8px;"><b>Suporte & Atendimento:</b> Agendamento manual e tratamento de pendências importadas.</li>
+                    <li style="margin-bottom: 8px;"><b>Gestão Logística:</b> Configuração de vagas diárias por cidade e tipo de O.S.</li>
+                    <li><b>Relatórios & Painéis:</b> Visão completa da agenda técnica dos próximos 3 dias.</li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with col_login:
+        st.markdown("<h3 style='color: #1E293B; margin-top: 0;'>🔐 Autenticação</h3>", unsafe_allow_html=True)
+        with st.form("form_login"):
+            email = st.text_input("E-mail de acesso", placeholder="seu.email@frionline.com.br")
+            senha = st.text_input("Senha", type="password", placeholder="••••••••")
+            btn_entrar = st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True)
+            
+            if btn_entrar:
+                usr = autenticar_usuario(email, senha)
+                if usr:
+                    st.session_state.usuario = usr
+                    st.success(f"Bem-vindo(a), {usr['nome']}!")
+                    st.rerun()
+                else:
+                    st.error("E-mail ou senha incorretos (ou usuário inativo).")
 
 else:
     usr = st.session_state.usuario
+    
+    # Exibição de Logo na Barra Lateral
+    if os.path.exists("logo.png"):
+        st.sidebar.image("logo.png", use_column_width=True)
+    elif os.path.exists("logo.jpg"):
+        st.sidebar.image("logo.jpg", use_column_width=True)
+    else:
+        st.sidebar.markdown("<h2 style='color: #FF6600; font-weight: 900; margin-bottom: 0;'>FRIONLINE</h2>", unsafe_allow_html=True)
+        st.sidebar.caption("LOGÍSTICA & OPERAÇÕES")
+        
+    st.sidebar.markdown("---")
     st.sidebar.write(f"👤 **{usr['nome']}**")
     st.sidebar.caption(f"Perfil: {usr['perfil'].upper()}")
-    if st.sidebar.button("Sair"):
+    if st.sidebar.button("🚪 Sair do Sistema", use_container_width=True):
         fazer_logout()
         
     st.sidebar.markdown("---")
@@ -139,7 +289,7 @@ else:
                     st.metric(f"Período: {p}", f"Agendadas: {agendadas_reais}")
                     vagas_input[p] = st.number_input(f"Total Vagas - {p}", min_value=agendadas_reais, value=max(v_atual, agendadas_reais), step=1)
 
-            if st.button("Salvar Disponibilidade"):
+            if st.button("Salvar Disponibilidade", type="primary"):
                 for p, qtd in vagas_input.items():
                     registro = db.query(DisponibilidadeVaga).filter_by(
                         data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
@@ -164,7 +314,6 @@ else:
     elif menu_selecionado == "2. Agendamento Manual (Suporte)":
         st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
         
-        # Exibe mensagem de sucesso de agendamento anterior e limpa
         if "msg_sucesso_manual" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_manual"))
             
@@ -243,7 +392,7 @@ else:
                     
                     obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if agendamento_existente else "")
                     
-                    if st.button("Confirmar Agendamento"):
+                    if st.button("Confirmar Agendamento", type="primary"):
                         if agendamento_existente:
                             agendamento_existente.cidade = cidade_ag
                             agendamento_existente.tipo_servico = servico_ag
@@ -288,7 +437,6 @@ else:
         st.title("📌 Central de Protocolos Pendentes de Agendamento")
         st.caption("Protocolos importados do Excel que ainda não possuem data/período agendados no sistema.")
         
-        # Exibe mensagem de sucesso e confirmação
         if "msg_sucesso_pendente" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_pendente"))
             
@@ -575,13 +723,11 @@ else:
                         todos_agendamentos = db.query(Agendamento).all()
                         
                         for _, row in df.iterrows():
-                            # 1. Ignorar se "Tipo Geral" (Coluna O) for "Recolhimento"
                             tipo_geral = str(row.get('Tipo Geral', row.get('Tipo geral', ''))).strip()
                             if tipo_geral.lower() == 'recolhimento':
                                 ignorados_recolhimento += 1
                                 continue
                             
-                            # 2. Extrai os 3 IDs possíveis da linha
                             proto_excel = limpar_str(row.get('Protocolo'))
                             id_cli_excel = limpar_str(row.get('ID Cliente'))
                             id_con_excel = limpar_str(row.get('ID Contrato'))
@@ -591,7 +737,6 @@ else:
                             if not ids_linha:
                                 continue
                                 
-                            # 3. Busca agendamento existente batendo com qualquer um dos 3 IDs
                             ag = None
                             for a_item in todos_agendamentos:
                                 ids_banco = [limpar_str(a_item.cliente_id), limpar_str(getattr(a_item, 'id_cliente', '')), limpar_str(getattr(a_item, 'id_contrato', ''))]
@@ -599,7 +744,6 @@ else:
                                     ag = a_item
                                     break
                             
-                            # Extração dos dados cadastrais com normalização de serviço
                             nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
                             rua_base = str(row.get('Rua', '')).strip() if pd.notna(row.get('Rua')) else ""
                             num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
@@ -626,7 +770,6 @@ else:
                             else:
                                 main_id = proto_excel or id_cli_excel or id_con_excel
                                 
-                                # Upsert no ProtocoloPendente
                                 existe_p = db.query(ProtocoloPendente).filter(
                                     (ProtocoloPendente.protocolo == main_id) |
                                     (ProtocoloPendente.id_cliente == id_cli_excel) |
@@ -727,7 +870,7 @@ else:
             senha_u = st.text_input("Senha Inicial", type="password")
             perfil_u = st.selectbox("Perfil de Acesso", ["suporte", "gestor_logistica", "admin"])
             
-            if st.form_submit_button("Cadastrar Usuário"):
+            if st.form_submit_button("Cadastrar Usuário", type="primary"):
                 if nome_u and email_u and senha_u:
                     db = get_db()
                     try:
