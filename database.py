@@ -18,12 +18,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     Base.metadata.create_all(bind=engine)
     
-    # Atualiza a estrutura de tabelas existentes adicionando colunas novas (caso não existam)
+    # Atualiza a estrutura de tabelas no Neon caso ainda não possuam as colunas
     with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS contato_1 VARCHAR(50);"))
-        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS contato_2 VARCHAR(50);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS id_cliente VARCHAR(50);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS id_contrato VARCHAR(50);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS criador_excel VARCHAR(100);"))
+        
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS id_cliente VARCHAR(50);"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS id_contrato VARCHAR(50);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS criador_excel VARCHAR(100);"))
         conn.commit()
