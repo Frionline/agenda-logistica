@@ -30,7 +30,7 @@ st.markdown("""
         --dark-navy: #1E293B;
     }
     
-    /* Estilização Geral de Botões com Animação e Contorno Laranja */
+    /* Estilização Geral de Botões */
     .stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
@@ -46,7 +46,7 @@ st.markdown("""
         transform: translateY(-2px) !important;
     }
     
-    /* Botões Primários com Identidade Frionline */
+    /* Botões Primários */
     .stButton > button[kind="primary"], button[data-testid="stBaseButton-primary"] {
         background: linear-gradient(135deg, #FF6600 0%, #E05500 100%) !important;
         color: white !important;
@@ -62,7 +62,7 @@ st.markdown("""
         transform: translateY(-2px) !important;
     }
     
-    /* Cards Customizados para Login e Avisos */
+    /* Cards Customizados */
     .hero-container {
         background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
         padding: 2.2rem;
@@ -82,15 +82,38 @@ st.markdown("""
         margin-bottom: 1.5rem;
     }
     
+    /* FIX COMPLETO PARA A BARRA LATERAL (SIDEBAR) EM DARK MODE */
     section[data-testid="stSidebar"] {
-        background-color: #F8FAFC;
-        border-right: 1px solid #E2E8F0;
+        background-color: #1E293B !important;
+        border-right: 1px solid #334155 !important;
+    }
+    
+    section[data-testid="stSidebar"] * {
+        color: #F1F5F9 !important;
+    }
+    
+    section[data-testid="stSidebar"] .stRadio label p {
+        color: #F1F5F9 !important;
+        font-weight: 500 !important;
+        font-size: 0.95rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+        border: 1px solid #334155 !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        border-color: #FF6600 !important;
+        color: #FF6600 !important;
+        background-color: #1E293B !important;
     }
     
     /* Badge Frionline */
     .frionline-badge {
         background-color: #FF6600;
-        color: white;
+        color: white !important;
         padding: 8px 20px;
         border-radius: 25px;
         font-size: 14px;
