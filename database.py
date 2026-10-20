@@ -16,13 +16,16 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
-    # Cria tabelas que ainda não existem
     Base.metadata.create_all(bind=engine)
     
     # Atualiza a estrutura de tabelas existentes adicionando colunas novas (caso não existam)
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS contato_1 VARCHAR(50);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS contato_2 VARCHAR(50);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS criador_excel VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS criador_excel VARCHAR(100);"))
         conn.commit()
 
 def get_db():
