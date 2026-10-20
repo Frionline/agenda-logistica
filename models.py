@@ -32,7 +32,9 @@ class Agendamento(Base):
     __tablename__ = 'agendamentos'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    cliente_id = Column(String(50), nullable=False, index=True)  # Protocolo
+    cliente_id = Column(String(50), nullable=False, index=True)  # Protocolo / Contrato / Cliente
+    id_cliente = Column(String(50), nullable=True)
+    id_contrato = Column(String(50), nullable=True)
     cidade = Column(String(100), nullable=False)
     tipo_servico = Column(String(100), nullable=False)
     data_agendamento = Column(Date, nullable=False, index=True)
@@ -58,6 +60,8 @@ class ProtocoloPendente(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     protocolo = Column(String(50), nullable=False, index=True)
+    id_cliente = Column(String(50), nullable=True)
+    id_contrato = Column(String(50), nullable=True)
     nome_cliente = Column(String(150), nullable=True)
     cidade = Column(String(100), nullable=True)
     tipo_servico = Column(String(100), nullable=True)
@@ -67,5 +71,5 @@ class ProtocoloPendente(Base):
     agendado_por = Column(String(100), nullable=True)
     criador_excel = Column(String(100), nullable=True)    # Coluna Criador (AK)
     data_referencia = Column(Date, nullable=False, index=True)
-    status = Column(String(20), default='Pendente')
+    status = Column(String(20), default='Pendente')        # 'Pendente', 'Agendado'
     criado_em = Column(DateTime, default=datetime.utcnow)
