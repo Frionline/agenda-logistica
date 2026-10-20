@@ -30,6 +30,24 @@ def limpar_str(val):
         val_str = val_str[:-2]
     return val_str
 
+def normalizar_servico(serv_str):
+    if not serv_str or pd.isna(serv_str):
+        return "Reparo"
+    s = str(serv_str).strip()
+    s_lower = s.lower()
+    
+    if "ponto" in s_lower:
+        return "Alteração de Ponto"
+    elif "mud" in s_lower or "endereço" in s_lower or "endereco" in s_lower:
+        return "Mudança de Endereço"
+    elif "instala" in s_lower or "ativa" in s_lower:
+        return "Instalação"
+    elif "reparo" in s_lower or "manuten" in s_lower:
+        return "Reparo"
+    elif "upgrade" in s_lower:
+        return "Upgrade"
+    return s
+
 if "usuario" not in st.session_state:
     st.session_state.usuario = None
 
@@ -176,9 +194,13 @@ else:
                     idx_cid = CIDADES.index(cid_inicial) if cid_inicial in CIDADES else 0
                     cidade_ag = st.selectbox("Cidade do Atendimento", CIDADES, index=idx_cid)
                 with c2:
-                    serv_inicial = agendamento_existente.tipo_servico if agendamento_existente else (dados_pendente.tipo_servico if dados_pendente and dados_pendente.tipo_servico in SERVICOS else SERVICOS[0])
-                    idx_serv = SERVICOS.index(serv_inicial) if serv_inicial in SERVICOS else 0
-                    servico_ag = st.selectbox("Tipo de Serviço", SERVICOS, index=idx_serv)
+                    serv_raw = agendamento_existente.tipo_servico if agendamento_existente else (dados_pendente.tipo_servico if dados_pendente else SERVICOS[0])
+                    serv_norm = normalizar_servico(serv_raw)
+                    opcoes_s = list(SERVICOS)
+                    if serv_norm not in opcoes_s:
+                        opcoes_s.append(serv_norm)
+                    idx_serv = opcoes_s.index(serv_norm)
+                    servico_ag = st.selectbox("Tipo de Serviço", opcoes_s, index=idx_serv)
                 
                 vagas_cadastradas = db.query(DisponibilidadeVaga).filter(
                     DisponibilidadeVaga.cidade == cidade_ag,
@@ -319,9 +341,14 @@ else:
                         idx_c = CIDADES.index(cid_padrao)
                         cidade_confirm = st.selectbox("Confirmar Cidade", CIDADES, index=idx_c)
                         
-                        serv_padrao = p_sel.tipo_servico if (p_sel.tipo_servico in SERVICOS) else SERVICOS[0]
-                        idx_s = SERVICOS.index(serv_padrao) if serv_padrao in SERVICOS else 0
-                        servico_confirm = st.selectbox("Confirmar Serviço", SERVICOS, index=idx_s)
+                        # Normaliza e garante que o serviço vindo do Excel seja rigorosamente o selecionado por padrão
+                        serv_norm = normalizar_servico(p_sel.tipo_servico)
+                        opcoes_serv = list(SERVICOS)
+                        if serv_norm not in opcoes_serv:
+                            opcoes_serv.append(serv_norm)
+                        idx_s = opcoes_serv.index(serv_norm)
+                        
+                        servico_confirm = st.selectbox("Confirmar Serviço", opcoes_serv, index=idx_s)
                     
                     vagas_cad = db.query(DisponibilidadeVaga).filter(
                         DisponibilidadeVaga.cidade == cidade_confirm,
@@ -338,7 +365,7 @@ else:
                             vagas_disp.append(v)
                             
                     if not vagas_disp:
-                        st.error("⚠️ Não existem vagas cadastradas ou disponíveis para esta cidade e serviço na Gestão de Vagas.")
+                        st.error(f"⚠️ Não existem vagas cadastradas ou disponíveis para a cidade '{cidade_confirm}' e serviço '{servico_confirm}' na Gestão de Vagas.")
                         btn_agendar = st.form_submit_button("Confirmar Agendamento", disabled=True)
                     else:
                         datas_opt = sorted(list(set([v.data for v in vagas_disp])))
@@ -561,14 +588,18 @@ else:
                                     ag = a_item
                                     break
                             
-                            # Extração dos dados cadastrais
+                            # Extração dos dados cadastrais com normalização de serviço
                             nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
                             rua_base = str(row.get('Rua', '')).strip() if pd.notna(row.get('Rua')) else ""
                             num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
                             rua_c = f"{rua_base}, {num_rua}".strip(", ") if rua_base else None
                             bairro_c = str(row.get('Bairro', '')).strip() if pd.notna(row.get('Bairro')) else None
                             cidade_c = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
-                            servico_c = str(row.get('Catálogo', row.get('Tipo Geral', ''))).strip() if pd.notna(row.get('Catálogo', row.get('Tipo Geral', None))) else None
+                            
+                            cat_val = str(row.get('Catálogo', '')).strip() if pd.notna(row.get('Catálogo')) else ""
+                            tg_val = str(row.get('Tipo Geral', '')).strip() if pd.notna(row.get('Tipo Geral')) else ""
+                            servico_c = normalizar_servico(cat_val or tg_val)
+                            
                             cat_4 = str(row.get('Categoria 4', '')).strip() if pd.notna(row.get('Categoria 4')) else None
                             criador_ak = str(row.get('Criador', '')).strip() if pd.notna(row.get('Criador')) else None
                             
