@@ -164,9 +164,16 @@ else:
     elif menu_selecionado == "2. Agendamento Manual (Suporte)":
         st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
         
+        # Exibe mensagem de sucesso de agendamento anterior e limpa
+        if "msg_sucesso_manual" in st.session_state:
+            st.success(st.session_state.pop("msg_sucesso_manual"))
+            
+        if "input_proto_manual" not in st.session_state:
+            st.session_state["input_proto_manual"] = ""
+
         db = get_db()
         try:
-            cliente_id_input = st.text_input("ID do Protocolo / Contrato / Cliente", help="Digite o número para pesquisar agendamentos existentes")
+            cliente_id_input = st.text_input("ID do Protocolo / Contrato / Cliente", key="input_proto_manual", help="Digite o número para pesquisar agendamentos existentes")
             cliente_id = limpar_str(cliente_id_input)
             
             if cliente_id:
@@ -268,7 +275,8 @@ else:
                             dados_pendente.status = "Agendado"
 
                         db.commit()
-                        st.success("Agendamento realizado com sucesso!")
+                        st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
+                        st.session_state["input_proto_manual"] = ""
                         st.rerun()
         finally:
             db.close()
@@ -280,6 +288,10 @@ else:
         st.title("📌 Central de Protocolos Pendentes de Agendamento")
         st.caption("Protocolos importados do Excel que ainda não possuem data/período agendados no sistema.")
         
+        # Exibe mensagem de sucesso e confirmação
+        if "msg_sucesso_pendente" in st.session_state:
+            st.success(st.session_state.pop("msg_sucesso_pendente"))
+            
         db = get_db()
         try:
             pendentes = db.query(ProtocoloPendente).filter(
@@ -341,7 +353,6 @@ else:
                         idx_c = CIDADES.index(cid_padrao)
                         cidade_confirm = st.selectbox("Confirmar Cidade", CIDADES, index=idx_c)
                         
-                        # Normaliza e garante que o serviço vindo do Excel seja rigorosamente o selecionado por padrão
                         serv_norm = normalizar_servico(p_sel.tipo_servico)
                         opcoes_serv = list(SERVICOS)
                         if serv_norm not in opcoes_serv:
@@ -399,7 +410,7 @@ else:
                             db.add(novo_a)
                             p_sel.status = "Agendado"
                             db.commit()
-                            st.success(f"✅ Protocolo {p_sel.protocolo} agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!")
+                            st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
                             st.rerun()
         finally:
             db.close()
