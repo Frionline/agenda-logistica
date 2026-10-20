@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
+from sqlalchemy import or_
 from database import init_db, get_db
 from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente
 from auth import autenticar_usuario, criar_admin_padrao, hash_senha
@@ -154,11 +155,15 @@ else:
                 todos_ag = db.query(Agendamento).all()
                 agendamento_existente = None
                 for a_item in todos_ag:
-                    if cliente_id in [limpar_str(a_item.cliente_id), limpar_str(a_item.id_cliente), limpar_str(a_item.id_contrato)]:
+                    if cliente_id in [limpar_str(a_item.cliente_id), limpar_str(getattr(a_item, 'id_cliente', '')), limpar_str(getattr(a_item, 'id_contrato', ''))]:
                         agendamento_existente = a_item
                         break
                         
-                dados_pendente = db.query(ProtocoloPendente).filter_by(protocolo=cliente_id, status="Pendente").first()
+                dados_pendente = db.query(ProtocoloPendente).filter(
+                    (ProtocoloPendente.protocolo == cliente_id) |
+                    (ProtocoloPendente.id_cliente == cliente_id) |
+                    (ProtocoloPendente.id_contrato == cliente_id)
+                ).first()
                 
                 if agendamento_existente:
                     st.warning(f"⚠️ Este protocolo já possui agendamento para {agendamento_existente.data_agendamento.strftime('%d/%m/%Y')} no período da {agendamento_existente.periodo}. Modo: REAGENDAMENTO.")
@@ -247,7 +252,7 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 3: CENTRAL DE PENDÊNCIAS DE AGENDAMENTO (NOVO!)
+    # MÓDULO 3: CENTRAL DE PENDÊNCIAS DE AGENDAMENTO
     # -------------------------------------------------------------------------
     elif menu_selecionado == "3. 📌 Central de Pendências de Agendamento":
         st.title("📌 Central de Protocolos Pendentes de Agendamento")
@@ -255,11 +260,12 @@ else:
         
         db = get_db()
         try:
-            pendentes = db.query(ProtocoloPendente).filter_by(status="Pendente").all()
+            pendentes = db.query(ProtocoloPendente).filter(
+                or_(ProtocoloPendente.status == "Pendente", ProtocoloPendente.status == None, ProtocoloPendente.status == "")
+            ).all()
             
             if not pendentes:
-                st.balloons()
-                st.success("🎉 Não há protocolos pendentes de agendamento no momento! Todos os casos foram agendados.")
+                st.info("ℹ️ Nenhum protocolo pendente encontrado no momento. Faça a importação da planilha no Módulo 5 para carregar os novos casos.")
             else:
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Total Pendentes", f"{len(pendentes)} O.S.")
@@ -284,7 +290,7 @@ else:
                         "Serviço": p.tipo_servico or "-",
                         "Endereço": f"{p.rua or '-'}, {p.bairro or '-'}",
                         "Criador (AK)": p.criador_excel or "-",
-                        "Data Ref. Excel": p.data_referencia.strftime('%d/%m/%Y')
+                        "Data Ref. Excel": p.data_referencia.strftime('%d/%m/%Y') if p.data_referencia else "-"
                     })
                 
                 st.dataframe(pd.DataFrame(dados_p), use_container_width=True)
@@ -292,7 +298,6 @@ else:
                 st.markdown("---")
                 st.subheader("⚡ Agendar Protocolo Pendente em 1 Clique")
                 
-                # Monta lista amigável para a caixa de seleção
                 opcoes_pendentes = {
                     f"Protocolo: {p.protocolo} | Cliente: {p.nome_cliente or 'Sem nome'} | {p.cidade or 'Cidade N/D'} ({p.tipo_servico or 'Serviço N/D'})": p
                     for p in pendentes
@@ -318,7 +323,6 @@ else:
                         idx_s = SERVICOS.index(serv_padrao) if serv_padrao in SERVICOS else 0
                         servico_confirm = st.selectbox("Confirmar Serviço", SERVICOS, index=idx_s)
                     
-                    # Busca vagas disponíveis para essa cidade e serviço
                     vagas_cad = db.query(DisponibilidadeVaga).filter(
                         DisponibilidadeVaga.cidade == cidade_confirm,
                         DisponibilidadeVaga.tipo_servico == servico_confirm,
@@ -547,8 +551,8 @@ else:
                         # 3. Busca agendamento existente batendo com qualquer um dos 3 IDs
                         ag = None
                         for a_item in todos_agendamentos:
-                            id_banco = limpar_str(a_item.cliente_id)
-                            if id_banco in ids_linha:
+                            ids_banco = [limpar_str(a_item.cliente_id), limpar_str(getattr(a_item, 'id_cliente', '')), limpar_str(getattr(a_item, 'id_contrato', ''))]
+                            if any(i in ids_linha for i in ids_banco if i != ""):
                                 ag = a_item
                                 break
                         
@@ -574,8 +578,29 @@ else:
                             atualizados += 1
                         else:
                             main_id = proto_excel or id_cli_excel or id_con_excel
-                            existe_p = db.query(ProtocoloPendente).filter_by(protocolo=main_id).first()
-                            if not existe_p:
+                            
+                            # Upsert no ProtocoloPendente
+                            existe_p = db.query(ProtocoloPendente).filter(
+                                (ProtocoloPendente.protocolo == main_id) |
+                                (ProtocoloPendente.id_cliente == id_cli_excel) |
+                                (ProtocoloPendente.id_contrato == id_con_excel)
+                            ).first()
+                            
+                            if existe_p:
+                                existe_p.protocolo = main_id
+                                existe_p.id_cliente = id_cli_excel
+                                existe_p.id_contrato = id_con_excel
+                                if nome_c: existe_p.nome_cliente = nome_c
+                                if cidade_c: existe_p.cidade = cidade_c
+                                if servico_c: existe_p.tipo_servico = servico_c
+                                if rua_c: existe_p.rua = rua_c
+                                if bairro_c: existe_p.bairro = bairro_c
+                                if cat_4: existe_p.categoria_4 = cat_4
+                                if criador_ak: existe_p.criador_excel = criador_ak
+                                if existe_p.status != "Agendado":
+                                    existe_p.status = "Pendente"
+                                novos_pendentes += 1
+                            else:
                                 novo_p = ProtocoloPendente(
                                     protocolo=main_id,
                                     id_cliente=id_cli_excel,
@@ -603,7 +628,7 @@ else:
                     col_res3.metric("⚪ Ignorados (Recolhimento)", f"{ignorados_recolhimento} O.S.")
                     
                     if novos_pendentes > 0:
-                        st.warning(f"⚠️ **{novos_pendentes} protocolo(s)** do Excel não possuíam agendamento prévio e foram salvos na **📌 Central de Pendências de Agendamento**!")
+                        st.warning(f"⚠️ **{novos_pendentes} protocolo(s)** do Excel foram carregados na **📌 Central de Pendências de Agendamento**!")
 
                 finally:
                     db.close()
@@ -620,7 +645,7 @@ else:
                     st.write(f"Atualmente existem **{total_p}** protocolos pendentes de agendamento.")
                     
                     if st.button("🗑️ Apagar TODOS os Pendentes", type="primary"):
-                        db.query(ProtocoloPendente).filter_by(status="Pendente").delete()
+                        db.query(ProtocoloPendente).delete()
                         db.commit()
                         st.success("Lista de pendentes zerada com sucesso!")
                         st.rerun()
