@@ -6,19 +6,23 @@ from models import Base
 # Lê a URL do Neon configurada no segredo do Streamlit Cloud
 DATABASE_URL = st.secrets["postgres"]["url"]
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20
-)
+@st.cache_resource
+def get_engine():
+    return create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20
+    )
 
+engine = get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+@st.cache_resource
 def init_db():
     Base.metadata.create_all(bind=engine)
     
-    # Atualiza a estrutura de tabelas no Neon caso ainda não possuam as colunas novas
+    # Executado apenas uma vez ao iniciar a aplicação (evita gargalo de conexões)
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS id_cliente VARCHAR(50);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS id_contrato VARCHAR(50);"))
@@ -32,5 +36,4 @@ def init_db():
         conn.commit()
 
 def get_db():
-    db = SessionLocal()
-    return db
+    return SessionLocal()
