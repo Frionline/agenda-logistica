@@ -9,7 +9,7 @@ from auth import autenticar_usuario, criar_admin_padrao, hash_senha
 
 st.set_page_config(
     page_title="Frionline - Agendamento Logístico",
-    page_icon="🚛",
+    page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -91,9 +91,9 @@ st.markdown("""
     .frionline-badge {
         background-color: #FF6600;
         color: white;
-        padding: 4px 12px;
+        padding: 6px 16px;
         border-radius: 20px;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 700;
         letter-spacing: 1px;
         display: inline-block;
@@ -150,29 +150,29 @@ def fazer_logout():
 # -----------------------------------------------------------------------------
 if st.session_state.usuario is None:
     
-    # Cabeçalho do App com Logo / Branding
-    col_logo1, col_logo2 = st.columns([1.2, 4])
+    # Cabeçalho do App com Logo Expandido / Destaque de Marca
+    col_logo1, col_logo2 = st.columns([2, 3])
     with col_logo1:
         if os.path.exists("logo.png"):
-            st.image("logo.png", width=200)
+            st.image("logo.png", width=320)
         elif os.path.exists("logo.jpg"):
-            st.image("logo.jpg", width=200)
+            st.image("logo.jpg", width=320)
         else:
-            st.markdown("<h1 style='color: #FF6600; font-weight: 900; margin: 0; letter-spacing: -1px;'>FRIONLINE</h1>", unsafe_allow_html=True)
+            st.markdown("<h1 style='color: #FF6600; font-size: 3.2rem; font-weight: 900; margin: 0; letter-spacing: -1px;'>FRIONLINE</h1>", unsafe_allow_html=True)
     with col_logo2:
         st.markdown("""
-            <div style="padding-top: 10px;">
+            <div style="padding-top: 18px;">
                 <span class="frionline-badge">SISTEMA CORPORATIVO FRIONLINE</span>
             </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Hero Banner Principal
+    # Hero Banner Principal com Emoji de Agenda 📅
     st.markdown("""
         <div class="hero-container">
-            <h1 style="color: #FFFFFF; margin-bottom: 8px; font-size: 2.1rem; font-weight: 800;">
-                🚛 Central de Agendamentos & Operações Logísticas
+            <h1 style="color: #FFFFFF; margin-bottom: 8px; font-size: 2.2rem; font-weight: 800;">
+                📅 Central de Agendamentos & Operações Logísticas
             </h1>
             <p style="color: #CBD5E1; font-size: 1.05rem; margin-bottom: 0px; line-height: 1.5;">
                 Sua plataforma unificada para controle de disponibilidade por cidade, agendamento inteligente de ordens de serviço e acompanhamento técnico em tempo real.
@@ -224,7 +224,7 @@ else:
     elif os.path.exists("logo.jpg"):
         st.sidebar.image("logo.jpg", use_column_width=True)
     else:
-        st.sidebar.markdown("<h2 style='color: #FF6600; font-weight: 900; margin-bottom: 0;'>FRIONLINE</h2>", unsafe_allow_html=True)
+        st.sidebar.markdown("<h2 style='color: #FF6600; font-size: 2.2rem; font-weight: 900; margin-bottom: 0;'>FRIONLINE</h2>", unsafe_allow_html=True)
         st.sidebar.caption("LOGÍSTICA & OPERAÇÕES")
         
     st.sidebar.markdown("---")
