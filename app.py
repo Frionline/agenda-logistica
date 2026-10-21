@@ -351,21 +351,20 @@ else:
         if "msg_sucesso_manual" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_manual"))
             
-        # Tratamento seguro para inicialização e limpeza da chave do widget
         if "input_proto_manual" not in st.session_state:
             st.session_state["input_proto_manual"] = ""
 
         db = get_db()
         try:
+            # 1. Rótulo alterado para 'ID de Protocolo'
             cliente_id_input = st.text_input(
-                "ID do Protocolo / Contrato / Cliente", 
+                "ID de Protocolo", 
                 key="input_proto_manual", 
                 help="Digite o número para pesquisar agendamentos existentes"
             )
             cliente_id = limpar_str(cliente_id_input)
             
             if cliente_id:
-                # Busca se já existe um agendamento ativo ou pendente para este protocolo
                 todos_ag = db.query(Agendamento).filter(
                     or_(
                         Agendamento.cliente_id == cliente_id,
@@ -374,10 +373,9 @@ else:
                     )
                 ).all()
                 
-                # Considera apenas agendamentos ativos/reagendados (desconsidera cancelados ou concluídos, se houver)
                 agendamento_existente = None
                 if todos_ag:
-                    agendamento_existente = todos_ag[-1]  # Pega o registro mais recente
+                    agendamento_existente = todos_ag[-1]
                 
                 dados_pendente = db.query(ProtocoloPendente).filter(
                     (ProtocoloPendente.protocolo == cliente_id) |
@@ -385,7 +383,6 @@ else:
                     (ProtocoloPendente.id_contrato == cliente_id)
                 ).first()
                 
-                # Flag para definir explicitamente se é um Reagendamento ou Novo Agendamento
                 eh_reagendamento = False
                 if agendamento_existente and agendamento_existente.status in ["Agendado", "Reagendado"]:
                     eh_reagendamento = True
@@ -395,95 +392,107 @@ else:
                 else:
                     st.info("ℹ️ Novo agendamento manual (Protocolo não cadastrado anteriormente).")
 
+                # 2. Opções com valor padrão 'Selecione...' para preenchimento obrigatório
                 c1, c2 = st.columns(2)
                 with c1:
-                    cid_inicial = agendamento_existente.cidade if (agendamento_existente and eh_reagendamento) else (dados_pendente.cidade if dados_pendente and dados_pendente.cidade in CIDADES else CIDADES[0])
-                    idx_cid = CIDADES.index(cid_inicial) if cid_inicial in CIDADES else 0
-                    cidade_ag = st.selectbox("Cidade do Atendimento", CIDADES, index=idx_cid)
+                    opcoes_cidades = ["Selecione a cidade..."] + CIDADES
+                    cidade_ag = st.selectbox("Cidade do Atendimento *", opcoes_cidades, index=0)
                 with c2:
-                    serv_raw = agendamento_existente.tipo_servico if (agendamento_existente and eh_reagendamento) else (dados_pendente.tipo_servico if dados_pendente else SERVICOS[0])
-                    serv_norm = normalizar_servico(serv_raw)
-                    opcoes_s = list(SERVICOS)
-                    if serv_norm not in opcoes_s:
-                        opcoes_s.append(serv_norm)
-                    idx_serv = opcoes_s.index(serv_norm)
-                    servico_ag = st.selectbox("Tipo de Serviço", opcoes_s, index=idx_serv)
+                    opcoes_servicos = ["Selecione o serviço..."] + SERVICOS
+                    servico_ag = st.selectbox("Tipo de Serviço *", opcoes_servicos, index=0)
                 
-                vagas_cadastradas = db.query(DisponibilidadeVaga).filter(
-                    DisponibilidadeVaga.cidade == cidade_ag,
-                    DisponibilidadeVaga.tipo_servico == servico_ag,
-                    DisponibilidadeVaga.data >= date.today()
-                ).all()
-                
-                vagas_disponiveis = []
-                for v in vagas_cadastradas:
-                    agendadas = db.query(Agendamento).filter_by(
-                        data_agendamento=v.data, cidade=cidade_ag, tipo_servico=servico_ag, periodo=v.periodo
-                    ).count()
-                    
-                    if eh_reagendamento and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
-                        agendadas -= 1
-                        
-                    if (v.vagas_totais - agendadas) > 0:
-                        vagas_disponiveis.append(v)
-                
-                if not vagas_disponiveis:
-                    st.error("Não existem vagas disponíveis para esta cidade e serviço no momento.")
-                else:
-                    opcoes_datas = sorted(list(set([v.data for v in vagas_disponiveis])))
-                    data_escolhida = st.selectbox("Selecione a Data Disponível", opcoes_datas, format_func=lambda d: d.strftime("%d/%m/%Y"))
-                    
-                    periodos_disponiveis = [v for v in vagas_disponiveis if v.data == data_escolhida]
-                    
-                    periodo_escolhido = st.selectbox(
-                        "Selecione o Período",
-                        [p.periodo for p in periodos_disponiveis],
-                        format_func=lambda p: f"{p}"
-                    )
-                    
-                    obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if (agendamento_existente and eh_reagendamento) else "")
-                    
-                    if st.button("Confirmar Agendamento", type="primary"):
-                        if eh_reagendamento and agendamento_existente:
-                            # Atualiza o registro existente
-                            agendamento_existente.cidade = cidade_ag
-                            agendamento_existente.tipo_servico = servico_ag
-                            agendamento_existente.data_agendamento = data_escolhida
-                            agendamento_existente.periodo = periodo_escolhido
-                            agendamento_existente.observacoes = obs
-                            agendamento_existente.status = "Reagendado"
-                            agendamento_existente.agendado_por = usr["nome"]
-                        else:
-                            # Cria um NOVO registro com status "Agendado"
-                            novo_ag = Agendamento(
-                                cliente_id=cliente_id,
-                                cidade=cidade_ag,
-                                tipo_servico=servico_ag,
-                                data_agendamento=data_escolhida,
-                                periodo=periodo_escolhido,
-                                observacoes=obs,
-                                status="Agendado",
-                                agendado_por=usr["nome"],
-                                criador_excel=dados_pendente.criador_excel if (dados_pendente and getattr(dados_pendente, 'criador_excel', None)) else None,
-                                nome_cliente=dados_pendente.nome_cliente if dados_pendente else None,
-                                rua=dados_pendente.rua if dados_pendente else None,
-                                bairro=dados_pendente.bairro if dados_pendente else None,
-                                categoria_4=dados_pendente.categoria_4 if dados_pendente else None,
-                                dados_completos=True if dados_pendente else False
-                            )
-                            db.add(novo_ag)
-                            
-                        if dados_pendente:
-                            dados_pendente.status = "Agendado"
+                # Validação prévia de seleção para buscar vagas no banco
+                cidade_valida = cidade_ag if cidade_ag in CIDADES else None
+                servico_valido = servico_ag if servico_ag in SERVICOS else None
 
-                        db.commit()
+                if not cidade_valida or not servico_valido:
+                    st.info("👆 Selecione a **Cidade do Atendimento** e o **Tipo de Serviço** para carregar as datas e vagas disponíveis.")
+                else:
+                    vagas_cadastradas = db.query(DisponibilidadeVaga).filter(
+                        DisponibilidadeVaga.cidade == cidade_valida,
+                        DisponibilidadeVaga.tipo_servico == servico_valido,
+                        DisponibilidadeVaga.data >= date.today()
+                    ).all()
+                    
+                    vagas_disponiveis = []
+                    for v in vagas_cadastradas:
+                        agendadas = db.query(Agendamento).filter_by(
+                            data_agendamento=v.data, cidade=cidade_valida, tipo_servico=servico_valido, periodo=v.periodo
+                        ).count()
                         
-                        # Define mensagem de sucesso na sessão
-                        st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
+                        if eh_reagendamento and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
+                            agendadas -= 1
+                            
+                        if (v.vagas_totais - agendadas) > 0:
+                            vagas_disponiveis.append(v)
+                    
+                    if not vagas_disponiveis:
+                        st.error("Não existem vagas disponíveis para esta cidade e serviço no momento.")
+                    else:
+                        opcoes_datas = sorted(list(set([v.data for v in vagas_disponiveis])))
                         
-                        # Limpa o campo de pesquisa sem quebrar o Streamlit
-                        del st.session_state["input_proto_manual"]
-                        st.rerun()
+                        # Data com seleção obrigatória em branco
+                        data_escolhida = st.selectbox(
+                            "Selecione a Data Disponível *", 
+                            [None] + opcoes_datas, 
+                            format_func=lambda d: "Selecione a data..." if d is None else d.strftime("%d/%m/%Y"),
+                            index=0
+                        )
+                        
+                        # Período dependente da escolha da data
+                        if data_escolhida is None:
+                            periodos_disponiveis = []
+                        else:
+                            periodos_disponiveis = [v.periodo for v in vagas_disponiveis if v.data == data_escolhida]
+                        
+                        periodo_escolhido = st.selectbox(
+                            "Selecione o Período *",
+                            [None] + periodos_disponiveis,
+                            format_func=lambda p: "Selecione o período..." if p is None else f"{p}",
+                            index=0
+                        )
+                        
+                        obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if (agendamento_existente and eh_reagendamento) else "")
+                        
+                        if st.button("Confirmar Agendamento", type="primary"):
+                            # Trava de Segurança: Obriga o preenchimento de todos os campos
+                            if not cidade_valida or not servico_valido or data_escolhida is None or periodo_escolhido is None:
+                                st.error("⚠️ Preenchimento obrigatório! Por favor, selecione a Cidade, o Serviço, a Data e o Período antes de confirmar.")
+                            else:
+                                if eh_reagendamento and agendamento_existente:
+                                    agendamento_existente.cidade = cidade_valida
+                                    agendamento_existente.tipo_servico = servico_valido
+                                    agendamento_existente.data_agendamento = data_escolhida
+                                    agendamento_existente.periodo = periodo_escolhido
+                                    agendamento_existente.observacoes = obs
+                                    agendamento_existente.status = "Reagendado"
+                                    agendamento_existente.agendado_por = usr["nome"]
+                                else:
+                                    novo_ag = Agendamento(
+                                        cliente_id=cliente_id,
+                                        cidade=cidade_valida,
+                                        tipo_servico=servico_valido,
+                                        data_agendamento=data_escolhida,
+                                        periodo=periodo_escolhido,
+                                        observacoes=obs,
+                                        status="Agendado",
+                                        agendado_por=usr["nome"],
+                                        criador_excel=dados_pendente.criador_excel if (dados_pendente and getattr(dados_pendente, 'criador_excel', None)) else None,
+                                        nome_cliente=dados_pendente.nome_cliente if dados_pendente else None,
+                                        rua=dados_pendente.rua if dados_pendente else None,
+                                        bairro=dados_pendente.bairro if dados_pendente else None,
+                                        categoria_4=dados_pendente.categoria_4 if dados_pendente else None,
+                                        dados_completos=True if dados_pendente else False
+                                    )
+                                    db.add(novo_ag)
+                                    
+                                if dados_pendente:
+                                    dados_pendente.status = "Agendado"
+
+                                db.commit()
+                                st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
+                                del st.session_state["input_proto_manual"]
+                                st.rerun()
         finally:
             db.close()
 
