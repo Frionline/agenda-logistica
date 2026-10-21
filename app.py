@@ -223,7 +223,7 @@ if st.session_state.usuario is None:
                 </p>
                 <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 15px 0;">
                 <ul style="color: #64748B; font-size: 0.92rem; padding-left: 18px; margin-bottom: 0;">
-                    <li style="margin-bottom: 8px;"><b>Suporte & Atendimento:</b> Agendamento manual e tratamento de pendências importadas.</li>
+                    <li style="margin-bottom: 8px;"><b>Suporte & Comercial:</b> Agendamento manual e tratamento de pendências importadas.</li>
                     <li style="margin-bottom: 8px;"><b>Gestão Logística:</b> Configuração de vagas diárias por cidade e tipo de O.S.</li>
                     <li><b>Relatórios & Painéis:</b> Visão completa da agenda técnica dos próximos 3 dias.</li>
                 </ul>
@@ -269,11 +269,11 @@ else:
     opcoes_menu = []
     if usr["perfil"] in ["admin", "gestor_logistica"]:
         opcoes_menu.append("1. Gestão de Vagas (Logística)")
-    if usr["perfil"] in ["admin", "suporte"]:
-        opcoes_menu.append("2. Agendamento Manual (Suporte)")
-    if usr["perfil"] in ["admin", "gestor_logistica", "suporte"]:
+    if usr["perfil"] in ["admin", "suporte", "comercial"]:
+        opcoes_menu.append("2. Agendamento Manual (Suporte/Comercial)")
+    if usr["perfil"] in ["admin", "gestor_logistica", "suporte", "comercial"]:
         opcoes_menu.append("3. 📌 Central de Pendências de Agendamento")
-    if usr["perfil"] in ["admin", "gestor_logistica", "suporte"]:
+    if usr["perfil"] in ["admin", "gestor_logistica", "suporte", "comercial"]:
         opcoes_menu.append("4. Painel de Agenda (3 Dias)")
     if usr["perfil"] in ["admin", "gestor_logistica"]:
         opcoes_menu.append("5. Importação de Excel (.xlsx / .xls)")
@@ -343,9 +343,9 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 2: AGENDAMENTO MANUAL (SUPORTE)
+    # MÓDULO 2: AGENDAMENTO MANUAL (SUPORTE / COMERCIAL)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "2. Agendamento Manual (Suporte)":
+    elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
         st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
         
         if "msg_sucesso_manual" in st.session_state:
@@ -892,40 +892,119 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 6: GESTÃO DE USUÁRIOS
+    # MÓDULO 6: GESTÃO DE USUÁRIOS (CADASTRO, EDIÇÃO E PERMISSÕES)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "6. Gestão de Usuários":
         st.title("👤 Gestão de Usuários e Permissões")
         
-        with st.form("form_novo_usuario"):
-            st.subheader("Cadastrar Novo Colaborador")
-            nome_u = st.text_input("Nome Completo")
-            email_u = st.text_input("E-mail (Login)")
-            senha_u = st.text_input("Senha Inicial", type="password")
-            perfil_u = st.selectbox("Perfil de Acesso", ["suporte", "gestor_logistica", "admin"])
-            
-            if st.form_submit_button("Cadastrar Usuário", type="primary"):
-                if nome_u and email_u and senha_u:
-                    db = get_db()
-                    try:
-                        existe = db.query(Usuario).filter_by(email=email_u.strip().lower()).first()
-                        if existe:
-                            st.error("Este e-mail já está cadastrado!")
-                        else:
-                            novo_u = Usuario(
-                                nome=nome_u,
-                                email=email_u.strip().lower(),
-                                senha_hash=hash_senha(senha_u),
-                                perfil=perfil_u,
-                                ativo=True
-                            )
-                            db.add(novo_u)
-                            db.commit()
-                            st.success(f"Usuário {nome_u} cadastrado com sucesso!")
-                    finally:
-                        db.close()
+        tab_cad, tab_edit, tab_list = st.tabs(["➕ Cadastrar Usuário", "✏️ Editar Usuário", "📋 Usuários Cadastrados"])
+        
+        PERFIS_DISPONIVEIS = ["suporte", "comercial", "gestor_logistica", "admin"]
+        
+        with tab_cad:
+            with st.form("form_novo_usuario"):
+                st.subheader("Cadastrar Novo Colaborador")
+                nome_u = st.text_input("Nome Completo")
+                email_u = st.text_input("E-mail (Login)")
+                senha_u = st.text_input("Senha Inicial", type="password")
+                perfil_u = st.selectbox("Perfil de Acesso", PERFIS_DISPONIVEIS)
+                
+                if st.form_submit_button("Cadastrar Usuário", type="primary"):
+                    if nome_u and email_u and senha_u:
+                        db = get_db()
+                        try:
+                            existe = db.query(Usuario).filter_by(email=email_u.strip().lower()).first()
+                            if existe:
+                                st.error("Este e-mail já está cadastrado!")
+                            else:
+                                novo_u = Usuario(
+                                    nome=nome_u,
+                                    email=email_u.strip().lower(),
+                                    senha_hash=hash_senha(senha_u),
+                                    perfil=perfil_u,
+                                    ativo=True
+                                )
+                                db.add(novo_u)
+                                db.commit()
+                                st.success(f"Usuário {nome_u} cadastrado com sucesso!")
+                                st.rerun()
+                        finally:
+                            db.close()
+                    else:
+                        st.warning("Preencha todos os campos obrigatórios.")
+                        
+        with tab_edit:
+            st.subheader("Editar Cadastro / Alterar Setor do Colaborador")
+            db = get_db()
+            try:
+                usuarios_db = db.query(Usuario).order_by(Usuario.nome).all()
+                if not usuarios_db:
+                    st.info("Nenhum usuário cadastrado para edição.")
                 else:
-                    st.warning("Preencha todos os campos obrigatórios.")
+                    dict_usuarios = {f"{u.nome} ({u.email}) - Perfil Atual: {u.perfil.upper()}": u.id for u in usuarios_db}
+                    usr_selecionado_label = st.selectbox("Selecione o Usuário que deseja editar:", list(dict_usuarios.keys()))
+                    usr_id = dict_usuarios[usr_selecionado_label]
+                    
+                    user_to_edit = db.query(Usuario).filter_by(id=usr_id).first()
+                    
+                    if user_to_edit:
+                        with st.form("form_editar_usuario"):
+                            col_e1, col_e2 = st.columns(2)
+                            with col_e1:
+                                novo_nome = st.text_input("Nome Completo", value=user_to_edit.nome)
+                                novo_email = st.text_input("E-mail (Login)", value=user_to_edit.email)
+                            with col_e2:
+                                idx_perfil = PERFIS_DISPONIVEIS.index(user_to_edit.perfil) if user_to_edit.perfil in PERFIS_DISPONIVEIS else 0
+                                novo_perfil = st.selectbox("Perfil / Setor de Acesso", PERFIS_DISPONIVEIS, index=idx_perfil)
+                                novo_status = st.selectbox("Status da Conta", ["Ativo", "Inativo"], index=0 if user_to_edit.ativo else 1)
+                            
+                            st.markdown("---")
+                            st.caption("🔒 **Redefinição de Senha (Opcional):** Preencha abaixo somente se desejar alterar a senha deste usuário.")
+                            nova_senha_admin = st.text_input("Nova Senha", type="password", placeholder="Deixe em branco para manter a senha atual")
+                            
+                            btn_salvar_edit = st.form_submit_button("Salvar Alterações", type="primary", use_container_width=True)
+                            
+                            if btn_salvar_edit:
+                                if not novo_nome or not novo_email:
+                                    st.error("Nome e E-mail não podem ficar em branco.")
+                                else:
+                                    # Verifica se o novo email já pertence a outro usuário
+                                    email_check = db.query(Usuario).filter(Usuario.email == novo_email.strip().lower(), Usuario.id != user_to_edit.id).first()
+                                    if email_check:
+                                        st.error("Este e-mail já pertence a outro usuário cadastrado.")
+                                    else:
+                                        user_to_edit.nome = novo_nome.strip()
+                                        user_to_edit.email = novo_email.strip().lower()
+                                        user_to_edit.perfil = novo_perfil
+                                        user_to_edit.ativo = True if novo_status == "Ativo" else False
+                                        
+                                        if nova_senha_admin:
+                                            user_to_edit.senha_hash = hash_senha(nova_senha_admin)
+                                            
+                                        db.commit()
+                                        st.success(f"Cadastro de {user_to_edit.nome} atualizado com sucesso!")
+                                        st.rerun()
+            finally:
+                db.close()
+                
+        with tab_list:
+            st.subheader("Relação Geral de Usuários do Sistema")
+            db = get_db()
+            try:
+                todos_u = db.query(Usuario).all()
+                if todos_u:
+                    dados_u = []
+                    for u in todos_u:
+                        dados_u.append({
+                            "ID": u.id,
+                            "Nome": u.nome,
+                            "E-mail": u.email,
+                            "Perfil / Setor": u.perfil.upper(),
+                            "Status": "🟢 Ativo" if u.ativo else "🔴 Inativo"
+                        })
+                    st.dataframe(pd.DataFrame(dados_u), use_container_width=True, hide_index=True)
+            finally:
+                db.close()
 
     # -------------------------------------------------------------------------
     # MÓDULO 7: ALTERAR MINHA SENHA (DISPONÍVEL PARA TODOS OS COLABORADORES)
