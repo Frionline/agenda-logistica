@@ -342,7 +342,7 @@ else:
         finally:
             db.close()
 
-    # -------------------------------------------------------------------------
+   # -------------------------------------------------------------------------
     # MÓDULO 2: AGENDAMENTO MANUAL (SUPORTE / COMERCIAL)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
@@ -351,40 +351,57 @@ else:
         if "msg_sucesso_manual" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_manual"))
             
+        # Tratamento seguro para inicialização e limpeza da chave do widget
         if "input_proto_manual" not in st.session_state:
             st.session_state["input_proto_manual"] = ""
 
         db = get_db()
         try:
-            cliente_id_input = st.text_input("ID do Protocolo / Contrato / Cliente", key="input_proto_manual", help="Digite o número para pesquisar agendamentos existentes")
+            cliente_id_input = st.text_input(
+                "ID do Protocolo / Contrato / Cliente", 
+                key="input_proto_manual", 
+                help="Digite o número para pesquisar agendamentos existentes"
+            )
             cliente_id = limpar_str(cliente_id_input)
             
             if cliente_id:
-                todos_ag = db.query(Agendamento).all()
+                # Busca se já existe um agendamento ativo ou pendente para este protocolo
+                todos_ag = db.query(Agendamento).filter(
+                    or_(
+                        Agendamento.cliente_id == cliente_id,
+                        Agendamento.id_cliente == cliente_id,
+                        Agendamento.id_contrato == cliente_id
+                    )
+                ).all()
+                
+                # Considera apenas agendamentos ativos/reagendados (desconsidera cancelados ou concluídos, se houver)
                 agendamento_existente = None
-                for a_item in todos_ag:
-                    if cliente_id in [limpar_str(a_item.cliente_id), limpar_str(getattr(a_item, 'id_cliente', '')), limpar_str(getattr(a_item, 'id_contrato', ''))]:
-                        agendamento_existente = a_item
-                        break
-                        
+                if todos_ag:
+                    agendamento_existente = todos_ag[-1]  # Pega o registro mais recente
+                
                 dados_pendente = db.query(ProtocoloPendente).filter(
                     (ProtocoloPendente.protocolo == cliente_id) |
                     (ProtocoloPendente.id_cliente == cliente_id) |
                     (ProtocoloPendente.id_contrato == cliente_id)
                 ).first()
                 
-                if agendamento_existente:
+                # Flag para definir explicitamente se é um Reagendamento ou Novo Agendamento
+                eh_reagendamento = False
+                if agendamento_existente and agendamento_existente.status in ["Agendado", "Reagendado"]:
+                    eh_reagendamento = True
                     st.warning(f"⚠️ Este protocolo já possui agendamento para {agendamento_existente.data_agendamento.strftime('%d/%m/%Y')} no período da {agendamento_existente.periodo}. Modo: REAGENDAMENTO.")
                 elif dados_pendente:
                     st.info(f"ℹ️ Protocolo localizado na lista de Pendentes. Cliente: {dados_pendente.nome_cliente or '-'}")
-                
+                else:
+                    st.info("ℹ️ Novo agendamento manual (Protocolo não cadastrado anteriormente).")
+
                 c1, c2 = st.columns(2)
                 with c1:
-                    cid_inicial = agendamento_existente.cidade if agendamento_existente else (dados_pendente.cidade if dados_pendente and dados_pendente.cidade in CIDADES else CIDADES[0])
+                    cid_inicial = agendamento_existente.cidade if (agendamento_existente and eh_reagendamento) else (dados_pendente.cidade if dados_pendente and dados_pendente.cidade in CIDADES else CIDADES[0])
                     idx_cid = CIDADES.index(cid_inicial) if cid_inicial in CIDADES else 0
                     cidade_ag = st.selectbox("Cidade do Atendimento", CIDADES, index=idx_cid)
                 with c2:
-                    serv_raw = agendamento_existente.tipo_servico if agendamento_existente else (dados_pendente.tipo_servico if dados_pendente else SERVICOS[0])
+                    serv_raw = agendamento_existente.tipo_servico if (agendamento_existente and eh_reagendamento) else (dados_pendente.tipo_servico if dados_pendente else SERVICOS[0])
                     serv_norm = normalizar_servico(serv_raw)
                     opcoes_s = list(SERVICOS)
                     if serv_norm not in opcoes_s:
@@ -404,7 +421,7 @@ else:
                         data_agendamento=v.data, cidade=cidade_ag, tipo_servico=servico_ag, periodo=v.periodo
                     ).count()
                     
-                    if agendamento_existente and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
+                    if eh_reagendamento and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
                         agendadas -= 1
                         
                     if (v.vagas_totais - agendadas) > 0:
@@ -424,10 +441,11 @@ else:
                         format_func=lambda p: f"{p}"
                     )
                     
-                    obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if agendamento_existente else "")
+                    obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if (agendamento_existente and eh_reagendamento) else "")
                     
                     if st.button("Confirmar Agendamento", type="primary"):
-                        if agendamento_existente:
+                        if eh_reagendamento and agendamento_existente:
+                            # Atualiza o registro existente
                             agendamento_existente.cidade = cidade_ag
                             agendamento_existente.tipo_servico = servico_ag
                             agendamento_existente.data_agendamento = data_escolhida
@@ -436,6 +454,7 @@ else:
                             agendamento_existente.status = "Reagendado"
                             agendamento_existente.agendado_por = usr["nome"]
                         else:
+                            # Cria um NOVO registro com status "Agendado"
                             novo_ag = Agendamento(
                                 cliente_id=cliente_id,
                                 cidade=cidade_ag,
@@ -458,8 +477,12 @@ else:
                             dados_pendente.status = "Agendado"
 
                         db.commit()
+                        
+                        # Define mensagem de sucesso na sessão
                         st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
-                        st.session_state["input_proto_manual"] = ""
+                        
+                        # Limpa o campo de pesquisa sem quebrar o Streamlit
+                        del st.session_state["input_proto_manual"]
                         st.rerun()
         finally:
             db.close()
