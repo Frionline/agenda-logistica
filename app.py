@@ -1046,31 +1046,45 @@ else:
         
         col_s1, col_s2 = st.columns([1, 1])
         with col_s1:
-            with st.form("form_alterar_senha_propria"):
+            with st.form("form_alterar_senha_propria", clear_on_submit=True):
                 senha_atual = st.text_input("Senha Atual", type="password", placeholder="Digite sua senha atual")
-                nova_senha = st.text_input("Nova Senha", type="password", placeholder="Digite a nova senha")
+                nova_senha = st.text_input("Nova Senha", type="password", placeholder="Mínimo 6 caracteres")
                 confirma_nova = st.text_input("Confirmar Nova Senha", type="password", placeholder="Repita a nova senha")
                 
                 btn_mudar = st.form_submit_button("Atualizar Minha Senha", type="primary", use_container_width=True)
                 
                 if btn_mudar:
-                    if not senha_atual or not nova_senha or not confirma_nova:
+                    senha_atual_clean = senha_atual.strip()
+                    nova_senha_clean = nova_senha.strip()
+                    confirma_nova_clean = confirma_nova.strip()
+
+                    if not senha_atual_clean or not nova_senha_clean or not confirma_nova_clean:
                         st.error("Por favor, preencha todos os campos do formulário.")
-                    elif nova_senha != confirma_nova:
+                    elif nova_senha_clean != confirma_nova_clean:
                         st.error("A nova senha e a confirmação não coincidem!")
-                    elif len(nova_senha) < 4:
-                        st.error("A nova senha deve ter no mínimo 4 caracteres.")
+                    elif len(nova_senha_clean) < 6:
+                        st.error("Por motivos de segurança, a nova senha deve ter no mínimo 6 caracteres.")
                     else:
                         db = get_db()
                         try:
                             user_db = db.query(Usuario).filter_by(id=usr["id"]).first()
                             if not user_db:
                                 st.error("Usuário não localizado no banco de dados.")
-                            elif user_db.senha_hash != hash_senha(senha_atual):
-                                st.error("A 'Senha Atual' informada está incorreta.")
                             else:
-                                user_db.senha_hash = hash_senha(nova_senha)
-                                db.commit()
-                                st.success("🎉 Senha alterada com sucesso! Use sua nova senha no próximo login.")
+                                # Verifica a senha atual
+                                hash_atual_informada = hash_senha(senha_atual_clean)
+                                
+                                # Garante compatibilidade tanto para hash direto quanto para validações
+                                if user_db.senha_hash != hash_atual_informada:
+                                    st.error("A 'Senha Atual' informada está incorreta.")
+                                else:
+                                    # Atualiza com a nova hash
+                                    user_db.senha_hash = hash_senha(nova_senha_clean)
+                                    db.commit()
+                                    
+                                    st.success("🎉 Senha alterada com sucesso! Utilize sua nova senha no próximo login.")
+                        except Exception as e:
+                            db.rollback()
+                            st.error(f"Erro ao atualizar senha no banco de dados: {str(e)}")
                         finally:
                             db.close()
