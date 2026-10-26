@@ -174,6 +174,8 @@ if "usuario" not in st.session_state:
 
 def fazer_logout():
     st.session_state.usuario = None
+    if "menu_navegacao" in st.session_state:
+        del st.session_state["menu_navegacao"]
     st.rerun()
 
 # -----------------------------------------------------------------------------
@@ -283,7 +285,11 @@ else:
     # Opção disponível para todos os colaboradores logados
     opcoes_menu.append("🔑 Alterar Minha Senha")
 
-    menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu)
+    # Garante que o estado do menu permaneça válido entre renderizações
+    if "menu_navegacao" in st.session_state and st.session_state["menu_navegacao"] not in opcoes_menu:
+        st.session_state["menu_navegacao"] = opcoes_menu[0]
+
+    menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
 
     # -------------------------------------------------------------------------
     # MÓDULO 1: GESTÃO DE VAGAS (LOGÍSTICA)
@@ -342,7 +348,7 @@ else:
         finally:
             db.close()
 
-   # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # MÓDULO 2: AGENDAMENTO MANUAL (SUPORTE / COMERCIAL)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
@@ -356,7 +362,6 @@ else:
 
         db = get_db()
         try:
-            # 1. Rótulo alterado para 'ID de Protocolo'
             cliente_id_input = st.text_input(
                 "ID de Protocolo", 
                 key="input_proto_manual", 
@@ -392,7 +397,6 @@ else:
                 else:
                     st.info("ℹ️ Novo agendamento manual (Protocolo não cadastrado anteriormente).")
 
-                # 2. Opções com valor padrão 'Selecione...' para preenchimento obrigatório
                 c1, c2 = st.columns(2)
                 with c1:
                     opcoes_cidades = ["Selecione a cidade..."] + CIDADES
@@ -401,7 +405,6 @@ else:
                     opcoes_servicos = ["Selecione o serviço..."] + SERVICOS
                     servico_ag = st.selectbox("Tipo de Serviço *", opcoes_servicos, index=0)
                 
-                # Validação prévia de seleção para buscar vagas no banco
                 cidade_valida = cidade_ag if cidade_ag in CIDADES else None
                 servico_valido = servico_ag if servico_ag in SERVICOS else None
 
@@ -431,7 +434,6 @@ else:
                     else:
                         opcoes_datas = sorted(list(set([v.data for v in vagas_disponiveis])))
                         
-                        # Data com seleção obrigatória em branco
                         data_escolhida = st.selectbox(
                             "Selecione a Data Disponível *", 
                             [None] + opcoes_datas, 
@@ -439,7 +441,6 @@ else:
                             index=0
                         )
                         
-                        # Período dependente da escolha da data
                         if data_escolhida is None:
                             periodos_disponiveis = []
                         else:
@@ -455,7 +456,6 @@ else:
                         obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if (agendamento_existente and eh_reagendamento) else "")
                         
                         if st.button("Confirmar Agendamento", type="primary"):
-                            # Trava de Segurança: Obriga o preenchimento de todos os campos
                             if not cidade_valida or not servico_valido or data_escolhida is None or periodo_escolhido is None:
                                 st.error("⚠️ Preenchimento obrigatório! Por favor, selecione a Cidade, o Serviço, a Data e o Período antes de confirmar.")
                             else:
@@ -491,7 +491,7 @@ else:
 
                                 db.commit()
                                 st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
-                                del st.session_state["input_proto_manual"]
+                                st.session_state["input_proto_manual"] = ""
                                 st.rerun()
         finally:
             db.close()
@@ -600,7 +600,7 @@ else:
                         periodo_sel = st.selectbox("Escolha o Período", periodos_opt)
                         
                         obs_sel = st.text_input("Observações do Agendamento")
-                        btn_agendar = st.form_submit_button(" Confirmar e Agendar Protocolo", type="primary")
+                        btn_agendar = st.form_submit_button("Confirmar e Agendar Protocolo", type="primary")
                         
                         if btn_agendar:
                             novo_a = Agendamento(
@@ -1000,7 +1000,6 @@ else:
                                 if not novo_nome or not novo_email:
                                     st.error("Nome e E-mail não podem ficar em branco.")
                                 else:
-                                    # Verifica se o novo email já pertence a outro usuário
                                     email_check = db.query(Usuario).filter(Usuario.email == novo_email.strip().lower(), Usuario.id != user_to_edit.id).first()
                                     if email_check:
                                         st.error("Este e-mail já pertence a outro usuário cadastrado.")
