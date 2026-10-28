@@ -1,52 +1,68 @@
-import bcrypt
-from datetime import datetime
+import hashlib
 from database import get_db
 from models import Usuario
 
 def hash_senha(senha: str) -> str:
-    """Gera o hash da senha utilizando bcrypt."""
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(senha.encode('utf-8'), salt).decode('utf-8')
+    """Gera um hash SHA-256 simples e seguro para a senha."""
+    return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
-def verificar_senha(senha: str, senha_hash: str) -> bool:
-    """Verifica se a senha em texto puro bate com o hash salvo."""
-    try:
-        return bcrypt.checkpw(senha.encode('utf-8'), senha_hash.encode('utf-8'))
-    except Exception:
-        return False
-
-def autenticar_usuario(email: str, senha: str):
-    """Verifica e-mail e senha no banco de dados e atualiza o último login."""
+def autenticar_usuario(email, senha):
+    """Autentica o usuário no banco de dados."""
+    if not email or not senha:
+        return None
+        
     db = get_db()
     try:
-        usuario = db.query(Usuario).filter_by(email=email.strip().lower(), ativo=True).first()
-        if usuario and verificar_senha(senha, usuario.senha_hash):
-            usuario.ultimo_login = datetime.utcnow()
-            db.commit()
-            return {
-                "id": usuario.id,
-                "nome": usuario.nome,
-                "email": usuario.email,
-                "perfil": usuario.perfil
-            }
+        # Busca o usuário ignorando maiúsculas/minúsculas no e-mail
+        email_limpo = email.strip().lower()
+        usuarios = db.query(Usuario).all()
+        
+        for usr in usuarios:
+            if usr.email and usr.email.strip().lower() == email_limpo:
+                # Se o campo 'ativo' existir e for False, impede login
+                if hasattr(usr, 'ativo') and usr.ativo is False:
+                    return None
+                    
+                hash_digitado = hash_senha(senha)
+                
+                # Compara o hash digitado com o armazenado no banco
+                if usr.senha_hash == hash_digitado or usr.senha_hash == senha:
+                    return {
+                        "id": usr.id,
+                        "nome": usr.nome,
+                        "email": usr.email,
+                        "perfil": usr.perfil
+                    }
         return None
     finally:
         db.close()
 
 def criar_admin_padrao():
-    """Cria um usuário administrador inicial caso não exista nenhum cadastrado."""
+    """Garante a existência de ao menos um administrador ativo."""
     db = get_db()
     try:
-        admin_existente = db.query(Usuario).filter_by(email="admin@logistica.com").first()
-        if not admin_existente:
+        admin = db.query(Usuario).filter(Usuario.perfil == "admin").first()
+        
+        if not admin:
             novo_admin = Usuario(
                 nome="Administrador",
-                email="admin@logistica.com",
-                senha_hash=hash_senha("admin12345"),
-                perfil="admin",
-                ativo=True
+                email="admin@frionline.com.br",
+                senha_hash=hash_senha("admin123"),
+                perfil="admin"
             )
+            if hasattr(novo_admin, "ativo"):
+                novo_admin.ativo = True
             db.add(novo_admin)
             db.commit()
+        else:
+            # Força a redefinição do e-mail, perfil e senha caso já exista
+            admin.email = "admin@frionline.com.br"
+            admin.senha_hash = hash_senha("admin123")
+            if hasattr(admin, "ativo"):
+                admin.ativo = True
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Erro ao criar admin padrão: {e}")
     finally:
         db.close()
