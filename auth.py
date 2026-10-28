@@ -42,7 +42,7 @@ def criar_admin_padrao():
             novo_admin = Usuario(
                 nome="Administrador",
                 email="admin@logistica.com",
-                senha_hash=hash_senha("admin123"),
+                senha_hash=hash_senha("admin12345"),
                 perfil="admin",
                 ativo=True
             )
