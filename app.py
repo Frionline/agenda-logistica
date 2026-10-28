@@ -6,6 +6,13 @@ import os
 from database import init_db, get_db
 from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente
 from auth import autenticar_usuario, criar_admin_padrao, hash_senha
+# Trecho temporário para redefinir a senha do admin
+db_temp = get_db()
+admin_temp = db_temp.query(Usuario).filter_by(email="admin@frionline.com.br").first()
+if admin_temp:
+    admin_temp.senha_hash = hash_senha("admin123")
+    db_temp.commit()
+db_temp.close()
 
 st.set_page_config(
     page_title="Frionline - Agendamento Logístico",
