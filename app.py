@@ -6,6 +6,7 @@ import os
 from database import init_db, get_db
 from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente
 from auth import autenticar_usuario, criar_admin_padrao, hash_senha
+
 # Trecho temporário para redefinir a senha do admin
 db_temp = get_db()
 admin_temp = db_temp.query(Usuario).filter_by(email="admin@frionline.com.br").first()
@@ -551,88 +552,99 @@ else:
                 st.dataframe(pd.DataFrame(dados_p), use_container_width=True)
                 
                 st.markdown("---")
-                st.subheader("⚡ Agendar Protocolo Pendente em 1 Clique")
+                st.subheader("⚡ Gerenciar ou Agendar Protocolo Pendente")
                 
                 opcoes_pendentes = {
                     f"Protocolo: {p.protocolo} | Cliente: {p.nome_cliente or 'Sem nome'} | {p.cidade or 'Cidade N/D'} ({p.tipo_servico or 'Serviço N/D'})": p
                     for p in pendentes
                 }
                 
-                selecao = st.selectbox("Selecione o Protocolo que deseja agendar agora:", list(opcoes_pendentes.keys()))
+                selecao = st.selectbox("Selecione a O.S. que deseja tratar ou excluir:", list(opcoes_pendentes.keys()))
                 p_sel = opcoes_pendentes[selecao]
                 
-                with st.form("form_agendar_pendente"):
-                    c_info1, c_info2 = st.columns(2)
-                    with c_info1:
-                        st.markdown(f"**Protocolo:** `{p_sel.protocolo}`")
-                        st.markdown(f"**Cliente:** {p_sel.nome_cliente or '-'}")
-                        st.markdown(f"**Endereço:** {p_sel.rua or '-'}, {p_sel.bairro or '-'}")
-                    with c_info2:
-                        st.markdown(f"**Criador (Coluna AK):** {p_sel.criador_excel or '-'}")
-                        
-                        cid_padrao = p_sel.cidade if (p_sel.cidade in CIDADES) else CIDADES[0]
-                        idx_c = CIDADES.index(cid_padrao)
-                        cidade_confirm = st.selectbox("Confirmar Cidade", CIDADES, index=idx_c)
-                        
-                        serv_norm = normalizar_servico(p_sel.tipo_servico)
-                        opcoes_serv = list(SERVICOS)
-                        if serv_norm not in opcoes_serv:
-                            opcoes_serv.append(serv_norm)
-                        idx_s = opcoes_serv.index(serv_norm)
-                        
-                        servico_confirm = st.selectbox("Confirmar Serviço", opcoes_serv, index=idx_s)
+                c_info1, c_info2 = st.columns(2)
+                with c_info1:
+                    st.markdown(f"**Protocolo:** `{p_sel.protocolo}`")
+                    st.markdown(f"**Cliente:** {p_sel.nome_cliente or '-'}")
+                    st.markdown(f"**Endereço:** {p_sel.rua or '-'}, {p_sel.bairro or '-'}")
+                with c_info2:
+                    st.markdown(f"**Criador (Coluna AK):** {p_sel.criador_excel or '-'}")
                     
-                    vagas_cad = db.query(DisponibilidadeVaga).filter(
-                        DisponibilidadeVaga.cidade == cidade_confirm,
-                        DisponibilidadeVaga.tipo_servico == servico_confirm,
-                        DisponibilidadeVaga.data >= date.today()
-                    ).all()
+                    cid_padrao = p_sel.cidade if (p_sel.cidade in CIDADES) else CIDADES[0]
+                    idx_c = CIDADES.index(cid_padrao)
+                    cidade_confirm = st.selectbox("Confirmar Cidade", CIDADES, index=idx_c)
                     
-                    vagas_disp = []
-                    for v in vagas_cad:
-                        ag_qtd = db.query(Agendamento).filter_by(
-                            data_agendamento=v.data, cidade=cidade_confirm, tipo_servico=servico_confirm, periodo=v.periodo
-                        ).count()
-                        if (v.vagas_totais - ag_qtd) > 0:
-                            vagas_disp.append(v)
-                            
-                    if not vagas_disp:
-                        st.error(f"⚠️ Não existem vagas cadastradas ou disponíveis para a cidade '{cidade_confirm}' e serviço '{servico_confirm}' na Gestão de Vagas.")
-                        btn_agendar = st.form_submit_button("Confirmar Agendamento", disabled=True)
-                    else:
-                        datas_opt = sorted(list(set([v.data for v in vagas_disp])))
-                        data_sel = st.selectbox("Escolha a Data do Agendamento", datas_opt, format_func=lambda d: d.strftime("%d/%m/%Y"))
-                        
-                        periodos_opt = [v.periodo for v in vagas_disp if v.data == data_sel]
-                        periodo_sel = st.selectbox("Escolha o Período", periodos_opt)
-                        
-                        obs_sel = st.text_input("Observações do Agendamento")
-                        btn_agendar = st.form_submit_button("Confirmar e Agendar Protocolo", type="primary")
-                        
-                        if btn_agendar:
-                            novo_a = Agendamento(
-                                cliente_id=p_sel.protocolo,
-                                id_cliente=p_sel.id_cliente,
-                                id_contrato=p_sel.id_contrato,
-                                cidade=cidade_confirm,
-                                tipo_servico=servico_confirm,
-                                data_agendamento=data_sel,
-                                periodo=periodo_sel,
-                                observacoes=obs_sel,
-                                status="Agendado",
-                                agendado_por=usr["nome"],
-                                criador_excel=p_sel.criador_excel,
-                                nome_cliente=p_sel.nome_cliente,
-                                rua=p_sel.rua,
-                                bairro=p_sel.bairro,
-                                categoria_4=p_sel.categoria_4,
-                                dados_completos=True
-                            )
-                            db.add(novo_a)
-                            p_sel.status = "Agendado"
-                            db.commit()
-                            st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
-                            st.rerun()
+                    serv_norm = normalizar_servico(p_sel.tipo_servico)
+                    opcoes_serv = list(SERVICOS)
+                    if serv_norm not in opcoes_serv:
+                        opcoes_serv.append(serv_norm)
+                    idx_s = opcoes_serv.index(serv_norm)
+                    
+                    servico_confirm = st.selectbox("Confirmar Serviço", opcoes_serv, index=idx_s)
+                
+                vagas_cad = db.query(DisponibilidadeVaga).filter(
+                    DisponibilidadeVaga.cidade == cidade_confirm,
+                    DisponibilidadeVaga.tipo_servico == servico_confirm,
+                    DisponibilidadeVaga.data >= date.today()
+                ).all()
+                
+                vagas_disp = []
+                for v in vagas_cad:
+                    ag_qtd = db.query(Agendamento).filter_by(
+                        data_agendamento=v.data, cidade=cidade_confirm, tipo_servico=servico_confirm, periodo=v.periodo
+                    ).count()
+                    if (v.vagas_totais - ag_qtd) > 0:
+                        vagas_disp.append(v)
+                
+                datas_opt = sorted(list(set([v.data for v in vagas_disp]))) if vagas_disp else []
+                data_sel = st.selectbox("Escolha a Data do Agendamento", datas_opt, format_func=lambda d: d.strftime("%d/%m/%Y")) if datas_opt else None
+                
+                periodos_opt = [v.periodo for v in vagas_disp if v.data == data_sel] if data_sel else []
+                periodo_sel = st.selectbox("Escolha o Período", periodos_opt) if periodos_opt else None
+                
+                obs_sel = st.text_input("Observações do Agendamento")
+                
+                if not vagas_disp:
+                    st.error(f"⚠️ Não existem vagas cadastradas ou disponíveis para a cidade '{cidade_confirm}' e serviço '{servico_confirm}' na Gestão de Vagas.")
+
+                col_btn1, col_btn2 = st.columns([2, 1])
+                
+                with col_btn1:
+                    btn_agendar = st.button("Confirmar e Agendar Protocolo", type="primary", disabled=not vagas_disp, use_container_width=True)
+                with col_btn2:
+                    btn_excluir_os = st.button("🗑️ Excluir esta O.S.", use_container_width=True)
+
+                if btn_agendar:
+                    novo_a = Agendamento(
+                        cliente_id=p_sel.protocolo,
+                        id_cliente=p_sel.id_cliente,
+                        id_contrato=p_sel.id_contrato,
+                        cidade=cidade_confirm,
+                        tipo_servico=servico_confirm,
+                        data_agendamento=data_sel,
+                        periodo=periodo_sel,
+                        observacoes=obs_sel,
+                        status="Agendado",
+                        agendado_por=usr["nome"],
+                        criador_excel=p_sel.criador_excel,
+                        nome_cliente=p_sel.nome_cliente,
+                        rua=p_sel.rua,
+                        bairro=p_sel.bairro,
+                        categoria_4=p_sel.categoria_4,
+                        dados_completos=True
+                    )
+                    db.add(novo_a)
+                    p_sel.status = "Agendado"
+                    db.commit()
+                    st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
+                    st.rerun()
+
+                if btn_excluir_os:
+                    proto_removido = p_sel.protocolo
+                    db.delete(p_sel)
+                    db.commit()
+                    st.session_state["msg_sucesso_pendente"] = f"🗑️ A O.S. de Protocolo {proto_removido} foi excluída com sucesso das Pendências!"
+                    st.rerun()
         finally:
             db.close()
 
@@ -1078,14 +1090,11 @@ else:
                             if not user_db:
                                 st.error("Usuário não localizado no banco de dados.")
                             else:
-                                # Verifica a senha atual
                                 hash_atual_informada = hash_senha(senha_atual_clean)
                                 
-                                # Garante compatibilidade tanto para hash direto quanto para validações
                                 if user_db.senha_hash != hash_atual_informada:
                                     st.error("A 'Senha Atual' informada está incorreta.")
                                 else:
-                                    # Atualiza com a nova hash
                                     user_db.senha_hash = hash_senha(nova_senha_clean)
                                     db.commit()
                                     
