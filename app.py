@@ -26,6 +26,32 @@ init_db()
 criar_admin_padrao()
 
 # -----------------------------------------------------------------------------
+# DIÁLOGOS E POP-UPS DE CONFIRMAÇÃO (@st.dialog)
+# -----------------------------------------------------------------------------
+@st.dialog("⚠️ Confirmar Exclusão de Pendentes")
+def modal_confirmar_limpeza_pendentes():
+    st.warning("Tem certeza de que deseja apagar **TODOS** os protocolos da lista de pendentes?")
+    st.caption("Esta ação é irreversível e removerá todos os protocolos importados que ainda não foram agendados.")
+    
+    col_modal1, col_modal2 = st.columns(2)
+    with col_modal1:
+        if st.button("Sim, apagar tudo", type="primary", use_container_width=True):
+            db = get_db()
+            try:
+                db.query(ProtocoloPendente).delete()
+                db.commit()
+                st.session_state["msg_sucesso_del"] = "Lista de pendentes zerada com sucesso!"
+                st.rerun()
+            except Exception as e:
+                db.rollback()
+                st.error(f"Erro ao apagar pendentes: {e}")
+            finally:
+                db.close()
+    with col_modal2:
+        if st.button("Cancelar", use_container_width=True):
+            st.rerun()
+
+# -----------------------------------------------------------------------------
 # ESTILIZAÇÃO CSS PERSONALIZADA (FRIONLINE - ORANGE TECH THEME)
 # -----------------------------------------------------------------------------
 st.markdown("""
@@ -925,20 +951,23 @@ else:
 
         with tab_del:
             st.subheader("Exclusão e Limpeza de Dados Importados")
+            
+            if "msg_sucesso_del" in st.session_state:
+                st.success(st.session_state.pop("msg_sucesso_del"))
+
             db = get_db()
             try:
                 col_del1, col_del2 = st.columns(2)
                 
                 with col_del1:
                     st.markdown("#### 1. Limpar Lista de Protocolos Pendentes")
-                    total_p = db.query(ProtocoloPendente).filter_by(status="Pendente").count()
+                    total_p = db.query(ProtocoloPendente).filter(
+                        or_(ProtocoloPendente.status == "Pendente", ProtocoloPendente.status == None, ProtocoloPendente.status == "")
+                    ).count()
                     st.write(f"Atualmente existem **{total_p}** protocolos pendentes de agendamento.")
                     
-                    if st.button("🗑️ Apagar TODOS os Pendentes", use_container_width=True):
-                        db.query(ProtocoloPendente).delete()
-                        db.commit()
-                        st.success("Lista de pendentes zerada com sucesso!")
-                        st.rerun()
+                    if st.button("🗑️ Apagar TODOS os Pendentes", use_container_width=True, disabled=(total_p == 0)):
+                        modal_confirmar_limpeza_pendentes()
                         
                 with col_del2:
                     st.markdown("#### 2. Apagar Agendamentos por Data")
@@ -950,7 +979,7 @@ else:
                         if total_ag_data > 0:
                             db.query(Agendamento).filter_by(data_agendamento=data_del).delete()
                             db.commit()
-                            st.success(f"Agendamentos do dia {data_del.strftime('%d/%m/%Y')} apagados!")
+                            st.session_state["msg_sucesso_del"] = f"Agendamentos do dia {data_del.strftime('%d/%m/%Y')} apagados com sucesso!"
                             st.rerun()
                         else:
                             st.info("Nenhum registro encontrado para apagar nesta data.")
