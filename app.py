@@ -45,13 +45,15 @@ st.markdown("""
         transition: all 0.25s ease-in-out !important;
         border: 1.5px solid #CBD5E1 !important;
         background-color: #FFFFFF !important;
-        color: #1E293B !important;
+        color: #0F172A !important;
+        height: 2.75rem !important;
     }
     
     .stButton > button:hover {
-        border-color: #FF6600 !important;
-        color: #FF6600 !important;
-        box-shadow: 0px 4px 14px rgba(255, 102, 0, 0.25) !important;
+        border-color: #DC2626 !important;
+        color: #DC2626 !important;
+        background-color: #FEF2F2 !important;
+        box-shadow: 0px 4px 14px rgba(220, 38, 38, 0.25) !important;
         transform: translateY(-2px) !important;
     }
     
@@ -61,6 +63,7 @@ st.markdown("""
         color: #FFFFFF !important;
         border: none !important;
         box-shadow: 0px 3px 8px rgba(255, 102, 0, 0.3) !important;
+        height: 2.75rem !important;
     }
     
     .stButton > button[kind="primary"]:hover, button[data-testid="stBaseButton-primary"]:hover {
@@ -69,24 +72,6 @@ st.markdown("""
         color: #FFFFFF !important;
         box-shadow: 0px 6px 16px rgba(255, 102, 0, 0.45) !important;
         transform: translateY(-2px) !important;
-    }
-
-    /* Estilo Específico para Botão Destrutivo (Excluir) */
-    .stButton > button[kind="secondary"] {
-        color: #1E293B !important;
-    }
-
-    .btn-danger > button {
-        background-color: #FEF2F2 !important;
-        color: #DC2626 !important;
-        border: 1.5px solid #FCA5A5 !important;
-    }
-
-    .btn-danger > button:hover {
-        background-color: #DC2626 !important;
-        color: #FFFFFF !important;
-        border-color: #B91C1C !important;
-        box-shadow: 0px 4px 14px rgba(220, 38, 38, 0.3) !important;
     }
     
     /* Cards Customizados */
@@ -626,15 +611,23 @@ else:
                 if not vagas_disp:
                     st.error(f"⚠️ Não existem vagas cadastradas ou disponíveis para a cidade '{cidade_confirm}' e serviço '{servico_confirm}' na Gestão de Vagas.")
 
-                col_btn1, col_btn2 = st.columns([2, 1])
+                # Utilização de vertical_alignment="bottom" para alinhamento perfeito dos botões
+                col_btn1, col_btn2 = st.columns([2, 1], vertical_alignment="bottom")
                 
                 with col_btn1:
-                    btn_agendar = st.button("Confirmar e Agendar Protocolo", type="primary", disabled=not vagas_disp, use_container_width=True)
+                    btn_agendar = st.button(
+                        "Confirmar e Agendar Protocolo", 
+                        type="primary", 
+                        disabled=not vagas_disp, 
+                        use_container_width=True
+                    )
                 
                 with col_btn2:
-                    st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
-                    btn_excluir_os = st.button("🗑️ Excluir esta O.S.", use_container_width=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    btn_excluir_os = st.button(
+                        "🗑️ Excluir esta O.S.", 
+                        type="secondary", 
+                        use_container_width=True
+                    )
 
                 if btn_agendar:
                     novo_a = Agendamento(
@@ -941,13 +934,11 @@ else:
                     total_p = db.query(ProtocoloPendente).filter_by(status="Pendente").count()
                     st.write(f"Atualmente existem **{total_p}** protocolos pendentes de agendamento.")
                     
-                    st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
                     if st.button("🗑️ Apagar TODOS os Pendentes", use_container_width=True):
                         db.query(ProtocoloPendente).delete()
                         db.commit()
                         st.success("Lista de pendentes zerada com sucesso!")
                         st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
                         
                 with col_del2:
                     st.markdown("#### 2. Apagar Agendamentos por Data")
@@ -955,7 +946,6 @@ else:
                     total_ag_data = db.query(Agendamento).filter_by(data_agendamento=data_del).count()
                     st.write(f"Existem **{total_ag_data}** agendamentos para o dia {data_del.strftime('%d/%m/%Y')}.")
                     
-                    st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
                     if st.button(f"🗑️ Apagar Agendamentos do dia {data_del.strftime('%d/%m/%Y')}", use_container_width=True):
                         if total_ag_data > 0:
                             db.query(Agendamento).filter_by(data_agendamento=data_del).delete()
@@ -964,7 +954,6 @@ else:
                             st.rerun()
                         else:
                             st.info("Nenhum registro encontrado para apagar nesta data.")
-                    st.markdown('</div>', unsafe_allow_html=True)
             finally:
                 db.close()
 
