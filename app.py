@@ -38,13 +38,14 @@ st.markdown("""
         --dark-navy: #1E293B;
     }
     
-    /* Estilização Geral de Botões */
+    /* Estilização Geral de Botões Secundários */
     .stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
         transition: all 0.25s ease-in-out !important;
         border: 1.5px solid #CBD5E1 !important;
         background-color: #FFFFFF !important;
+        color: #1E293B !important;
     }
     
     .stButton > button:hover {
@@ -57,7 +58,7 @@ st.markdown("""
     /* Botões Primários */
     .stButton > button[kind="primary"], button[data-testid="stBaseButton-primary"] {
         background: linear-gradient(135deg, #FF6600 0%, #E05500 100%) !important;
-        color: white !important;
+        color: #FFFFFF !important;
         border: none !important;
         box-shadow: 0px 3px 8px rgba(255, 102, 0, 0.3) !important;
     }
@@ -65,9 +66,27 @@ st.markdown("""
     .stButton > button[kind="primary"]:hover, button[data-testid="stBaseButton-primary"]:hover {
         background: linear-gradient(135deg, #FF7711 0%, #F06000 100%) !important;
         border: 1.5px solid #FF8822 !important;
-        color: white !important;
+        color: #FFFFFF !important;
         box-shadow: 0px 6px 16px rgba(255, 102, 0, 0.45) !important;
         transform: translateY(-2px) !important;
+    }
+
+    /* Estilo Específico para Botão Destrutivo (Excluir) */
+    .stButton > button[kind="secondary"] {
+        color: #1E293B !important;
+    }
+
+    .btn-danger > button {
+        background-color: #FEF2F2 !important;
+        color: #DC2626 !important;
+        border: 1.5px solid #FCA5A5 !important;
+    }
+
+    .btn-danger > button:hover {
+        background-color: #DC2626 !important;
+        color: #FFFFFF !important;
+        border-color: #B91C1C !important;
+        box-shadow: 0px 4px 14px rgba(220, 38, 38, 0.3) !important;
     }
     
     /* Cards Customizados */
@@ -611,8 +630,11 @@ else:
                 
                 with col_btn1:
                     btn_agendar = st.button("Confirmar e Agendar Protocolo", type="primary", disabled=not vagas_disp, use_container_width=True)
+                
                 with col_btn2:
+                    st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
                     btn_excluir_os = st.button("🗑️ Excluir esta O.S.", use_container_width=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
                 if btn_agendar:
                     novo_a = Agendamento(
@@ -919,11 +941,13 @@ else:
                     total_p = db.query(ProtocoloPendente).filter_by(status="Pendente").count()
                     st.write(f"Atualmente existem **{total_p}** protocolos pendentes de agendamento.")
                     
-                    if st.button("🗑️ Apagar TODOS os Pendentes", type="primary"):
+                    st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
+                    if st.button("🗑️ Apagar TODOS os Pendentes", use_container_width=True):
                         db.query(ProtocoloPendente).delete()
                         db.commit()
                         st.success("Lista de pendentes zerada com sucesso!")
                         st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
                         
                 with col_del2:
                     st.markdown("#### 2. Apagar Agendamentos por Data")
@@ -931,7 +955,8 @@ else:
                     total_ag_data = db.query(Agendamento).filter_by(data_agendamento=data_del).count()
                     st.write(f"Existem **{total_ag_data}** agendamentos para o dia {data_del.strftime('%d/%m/%Y')}.")
                     
-                    if st.button(f"🗑️ Apagar Agendamentos do dia {data_del.strftime('%d/%m/%Y')}"):
+                    st.markdown('<div class="btn-danger">', unsafe_allow_html=True)
+                    if st.button(f"🗑️ Apagar Agendamentos do dia {data_del.strftime('%d/%m/%Y')}", use_container_width=True):
                         if total_ag_data > 0:
                             db.query(Agendamento).filter_by(data_agendamento=data_del).delete()
                             db.commit()
@@ -939,6 +964,7 @@ else:
                             st.rerun()
                         else:
                             st.info("Nenhum registro encontrado para apagar nesta data.")
+                    st.markdown('</div>', unsafe_allow_html=True)
             finally:
                 db.close()
 
