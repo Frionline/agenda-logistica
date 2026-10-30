@@ -501,6 +501,10 @@ else:
         if "input_proto_manual" not in st.session_state:
             st.session_state["input_proto_manual"] = ""
 
+        # Callback seguro para limpar a chave da sessão no evento de clique do botão
+        def limpar_campo_protocolo():
+            st.session_state["input_proto_manual"] = ""
+
         db = get_db()
         try:
             cliente_id_input = st.text_input(
@@ -602,7 +606,7 @@ else:
                         
                         obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if (agendamento_existente and eh_reagendamento) else "")
                         
-                        if st.button("Confirmar Agendamento", type="primary"):
+                        if st.button("Confirmar Agendamento", type="primary", on_click=limpar_campo_protocolo):
                             if not cidade_valida or not servico_valido or data_escolhida is None or periodo_escolhido is None:
                                 st.error("⚠️ Preenchimento obrigatório! Por favor, selecione a Cidade, o Serviço, a Data e o Período antes de confirmar.")
                             elif verificar_data_bloqueada(data_escolhida):
@@ -641,7 +645,6 @@ else:
                                 db.commit()
                                 limpar_cache_geral()
                                 st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
-                                st.session_state["input_proto_manual"] = ""
                                 st.rerun()
         finally:
             db.close()
