@@ -21,14 +21,14 @@ engine = get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
-    import models  # Importa os modelos para registrá-los no metadata antes do create_all
+    import models  # Registra os modelos no metadata antes do create_all
     
-    # Cria novas tabelas declaradas no models (incluindo bloqueios_agenda)
+    # Cria tabelas caso não existam
     Base.metadata.create_all(bind=engine)
     
-    # Executa migrações diretas no PostgreSQL Neon
+    # Executa DDLs para garantir que todas as colunas e tabelas novas existam
     with engine.connect() as conn:
-        # Garante a criação da tabela de bloqueio
+        # Tabela de bloqueio por período (Cadeado)
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS bloqueios_agenda (
                 id SERIAL PRIMARY KEY,
@@ -39,7 +39,7 @@ def init_db():
             );
         """))
         
-        # Migração das colunas de agendamentos
+        # Colunas adicionais em agendamentos
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS id_cliente VARCHAR(50);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS id_contrato VARCHAR(50);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
@@ -50,7 +50,7 @@ def init_db():
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS categoria_4 VARCHAR(100);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS dados_completos BOOLEAN DEFAULT FALSE;"))
         
-        # Migração das colunas de protocolos pendentes
+        # Colunas adicionais em protocolos pendentes
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS id_cliente VARCHAR(50);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS id_contrato VARCHAR(50);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
@@ -59,8 +59,13 @@ def init_db():
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS rua VARCHAR(200);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS bairro VARCHAR(100);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS categoria_4 VARCHAR(100);"))
-        
-        # Atualização/Padronização dos nomes das cidades unificadas no banco de dados
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS data_referencia DATE;"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Pendente';"))
+
+        # Colunas adicionais em disponibilidade_vagas
+        conn.execute(text("ALTER TABLE disponibilidade_vagas ADD COLUMN IF NOT EXISTS vagas_agendadas INT DEFAULT 0;"))
+
+        # Atualização/Padronização dos nomes das cidades unificadas
         conn.execute(text("UPDATE agendamentos SET cidade = 'Cordeiro e Cantagalo' WHERE LOWER(cidade) IN ('cordeiro', 'cantagalo');"))
         conn.execute(text("UPDATE agendamentos SET cidade = 'Trajano e Madalena' WHERE LOWER(cidade) IN ('trajano', 'madalena', 'santa maria madalena');"))
         conn.execute(text("UPDATE disponibilidade_vagas SET cidade = 'Cordeiro e Cantagalo' WHERE LOWER(cidade) IN ('cordeiro', 'cantagalo');"))
