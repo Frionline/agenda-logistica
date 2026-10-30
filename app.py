@@ -4,27 +4,10 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import or_
 import os
 from database import init_db, get_db
-from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda
-from auth import autenticar_usuario, criar_admin_padrao, hash_senha
 
 # -----------------------------------------------------------------------------
-# LIMPEZA INICIAL DOS DADOS DE TESTE DE PENDÊNCIAS (SOLICITADA)
+# CONFIGURAÇÃO E INICIALIZAÇÃO DO BANCO (EXECUTAR PRIMEIRO)
 # -----------------------------------------------------------------------------
-db_temp = get_db()
-try:
-    # Redefinição de senha do admin padrão
-    admin_temp = db_temp.query(Usuario).filter_by(email="admin@frionline.com.br").first()
-    if admin_temp:
-        admin_temp.senha_hash = hash_senha("admin123")
-    
-    # Limpa tabela de pendências (dados de teste)
-    db_temp.query(ProtocoloPendente).delete()
-    db_temp.commit()
-except Exception as e:
-    db_temp.rollback()
-finally:
-    db_temp.close()
-
 st.set_page_config(
     page_title="Frionline - Agendamento Logístico",
     page_icon="📅",
@@ -32,8 +15,27 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Executa migrações/DMLs no Neon DB antes de rodar qualquer query do ORM
 init_db()
+
+from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda
+from auth import autenticar_usuario, criar_admin_padrao, hash_senha
+
 criar_admin_padrao()
+
+# Redefinição temporária do admin + Limpeza de Pendências (dados de teste)
+db_temp = get_db()
+try:
+    admin_temp = db_temp.query(Usuario).filter_by(email="admin@frionline.com.br").first()
+    if admin_temp:
+        admin_temp.senha_hash = hash_senha("admin123")
+    
+    db_temp.query(ProtocoloPendente).delete()
+    db_temp.commit()
+except Exception as e:
+    db_temp.rollback()
+finally:
+    db_temp.close()
 
 # -----------------------------------------------------------------------------
 # HELPER: VERIFICAÇÃO DE BLOQUEIO DE DATA (CADEADO)
@@ -198,7 +200,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# LISTA DE CIDADES ATUALIZADA (UNIFICAÇÃO CORDEIRO/CANTAGALO E TRAJANO/MADALENA)
+# LISTA DE CIDADES UNIFICADAS
 # -----------------------------------------------------------------------------
 CIDADES = [
     "Nova Friburgo", "Lumiar", "Bom Jardim", "Duas Barras", 
@@ -260,7 +262,7 @@ def fazer_logout():
     st.rerun()
 
 # -----------------------------------------------------------------------------
-# TELA DE LOGIN (DESIGN CORPORATIVO FRIONLINE)
+# TELA DE LOGIN
 # -----------------------------------------------------------------------------
 if st.session_state.usuario is None:
     col_logo1, col_logo2 = st.columns([1.8, 2], vertical_alignment="center")
@@ -366,12 +368,11 @@ else:
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
 
     # -------------------------------------------------------------------------
-    # MÓDULO 1: GESTÃO DE VAGAS (LOGÍSTICA) + BOTÃO CADEADO (BLOQUEIO)
+    # MÓDULO 1: GESTÃO DE VAGAS + CADEADO DE BLOQUEIO
     # -------------------------------------------------------------------------
     if menu_selecionado == "1. Gestão de Vagas (Logística)":
         st.title("📅 Gestão de Disponibilidade de Vagas")
         
-        # --- PAINEL DO CADEADO (BLOQUEIO DE DATAS) ---
         st.markdown("### 🔒 Bloqueio de Agendamento por Período (Cadeado Global)")
         db = get_db()
         try:
@@ -464,7 +465,7 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 2: AGENDAMENTO MANUAL (SUPORTE / COMERCIAL)
+    # MÓDULO 2: AGENDAMENTO MANUAL
     # -------------------------------------------------------------------------
     elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
         st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
@@ -534,7 +535,6 @@ else:
                     
                     vagas_disponiveis = []
                     for v in vagas_cadastradas:
-                        # Ignora vagas de datas que estejam com CADEADO FECHADO
                         if verificar_data_bloqueada(v.data):
                             continue
 
@@ -618,7 +618,7 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 3: CENTRAL DE PENDÊNCIAS DE AGENDAMENTO
+    # MÓDULO 3: CENTRAL DE PENDÊNCIAS
     # -------------------------------------------------------------------------
     elif menu_selecionado == "3. 📌 Central de Pendências de Agendamento":
         st.title("📌 Central de Protocolos Pendentes de Agendamento")
@@ -778,7 +778,7 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 4: PAINEL DE AGENDA (VISUALIZAÇÃO 3 DIAS + RELATÓRIO)
+    # MÓDULO 4: PAINEL DE AGENDA (VISUALIZAÇÃO 3 DIAS + RELATÓRIO COM FILTRO DE O.S.)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "4. Painel de Agenda (3 Dias)":
         st.title("📊 Painel da Agenda de Serviços")
@@ -858,7 +858,7 @@ else:
             finally:
                 db.close()
                 
-        # --- FILTRO POR TIPO DE O.S. ACRESCENTADO ---
+        # --- FILTRO DE TIPO DE O.S. NA LISTA DETALHADA ---
         with tab_detalhes:
             st.subheader("Consulta e Download do Relatório Detalhado")
             col_d1, col_c1, col_s1 = st.columns(3)
@@ -914,7 +914,7 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 5: IMPORTAÇÃO E GERENCIAMENTO DE EXCEL (.XLSX / .XLS)
+    # MÓDULO 5: IMPORTAÇÃO DE EXCEL E GERENCIAMENTO DE DADOS
     # -------------------------------------------------------------------------
     elif menu_selecionado == "5. Importação de Excel (.xlsx / .xls)":
         st.title("📥 Importação de Planilha e Gerenciamento de Dados")
@@ -1082,7 +1082,7 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 6: GESTÃO DE USUÁRIOS (CADASTRO, EDIÇÃO E PERMISSÕES)
+    # MÓDULO 6: GESTÃO DE USUÁRIOS
     # -------------------------------------------------------------------------
     elif menu_selecionado == "6. Gestão de Usuários":
         st.title("👤 Gestão de Usuários e Permissões")
