@@ -73,3 +73,15 @@ class ProtocoloPendente(Base):
     data_referencia = Column(Date, nullable=False, index=True)
     status = Column(String(20), default='Pendente')        # 'Pendente', 'Agendado'
     criado_em = Column(DateTime, default=datetime.utcnow)
+
+from sqlalchemy import Column, Integer, String, Date, Boolean
+from database import Base
+
+class BloqueioAgenda(Base):
+    __tablename__ = "bloqueios_agenda"
+
+    id = Column(Integer, primary_key=True, index=True)
+    data_inicio = Column(Date, nullable=False)
+    data_fim = Column(Date, nullable=False)
+    ativo = Column(Boolean, default=True)
+    criado_por = Column(String, nullable=True)
