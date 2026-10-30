@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Date, Boolean, Text, DateTime
 from datetime import datetime
-from database import Base  # Importa a Base declarada em database.py
+from database import Base
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -9,7 +9,7 @@ class Usuario(Base):
     nome = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, index=True, nullable=False)
     senha_hash = Column(String(255), nullable=False)
-    perfil = Column(String(50), nullable=False)  # admin, gestor_logistica, suporte, comercial
+    perfil = Column(String(50), nullable=False)
     ativo = Column(Boolean, default=True)
 
 class DisponibilidadeVaga(Base):
@@ -19,7 +19,7 @@ class DisponibilidadeVaga(Base):
     data = Column(Date, index=True, nullable=False)
     cidade = Column(String(100), index=True, nullable=False)
     tipo_servico = Column(String(100), index=True, nullable=False)
-    periodo = Column(String(50), nullable=False)  # Manhã, Livre, Tarde, Noite
+    periodo = Column(String(50), nullable=False)
     vagas_totais = Column(Integer, default=0)
     vagas_agendadas = Column(Integer, default=0)
 
