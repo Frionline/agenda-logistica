@@ -5,9 +5,6 @@ from sqlalchemy import or_
 import os
 from database import init_db, get_db
 
-# -----------------------------------------------------------------------------
-# CONFIGURAÇÃO E INICIALIZAÇÃO DO BANCO (EXECUTAR PRIMEIRO)
-# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Frionline - Agendamento Logístico",
     page_icon="📅",
@@ -15,27 +12,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Executa migrações/DMLs no Neon DB antes de rodar qualquer query do ORM
+# Inicializa o banco de dados via cache do Streamlit
 init_db()
 
 from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda
 from auth import autenticar_usuario, criar_admin_padrao, hash_senha
 
 criar_admin_padrao()
-
-# Redefinição temporária do admin + Limpeza de Pendências (dados de teste)
-db_temp = get_db()
-try:
-    admin_temp = db_temp.query(Usuario).filter_by(email="admin@frionline.com.br").first()
-    if admin_temp:
-        admin_temp.senha_hash = hash_senha("admin123")
-    
-    db_temp.query(ProtocoloPendente).delete()
-    db_temp.commit()
-except Exception as e:
-    db_temp.rollback()
-finally:
-    db_temp.close()
 
 # -----------------------------------------------------------------------------
 # HELPER: VERIFICAÇÃO DE BLOQUEIO DE DATA (CADEADO)
@@ -85,7 +68,6 @@ def modal_confirmar_limpeza_pendentes():
 # -----------------------------------------------------------------------------
 st.markdown("""
 <style>
-    /* Cores e Variáveis Frionline */
     :root {
         --primary-orange: #FF6600;
         --hover-orange: #E05500;
@@ -93,7 +75,6 @@ st.markdown("""
         --dark-navy: #1E293B;
     }
     
-    /* Estilização Geral de Botões Secundários */
     .stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
@@ -112,7 +93,6 @@ st.markdown("""
         transform: translateY(-2px) !important;
     }
     
-    /* Botões Primários */
     .stButton > button[kind="primary"], button[data-testid="stBaseButton-primary"] {
         background: linear-gradient(135deg, #FF6600 0%, #E05500 100%) !important;
         color: #FFFFFF !important;
@@ -129,7 +109,6 @@ st.markdown("""
         transform: translateY(-2px) !important;
     }
     
-    /* Cards Customizados */
     .hero-container {
         background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
         padding: 2.2rem;
@@ -149,7 +128,6 @@ st.markdown("""
         margin-bottom: 1.5rem;
     }
     
-    /* BARRA LATERAL (SIDEBAR) EM DARK MODE */
     section[data-testid="stSidebar"] {
         background-color: #1E293B !important;
         border-right: 1px solid #334155 !important;
@@ -177,7 +155,6 @@ st.markdown("""
         background-color: #1E293B !important;
     }
     
-    /* Badge Frionline */
     .frionline-badge {
         background-color: #FF6600;
         color: white !important;
@@ -778,7 +755,7 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 4: PAINEL DE AGENDA (VISUALIZAÇÃO 3 DIAS + RELATÓRIO COM FILTRO DE O.S.)
+    # MÓDULO 4: PAINEL DE AGENDA
     # -------------------------------------------------------------------------
     elif menu_selecionado == "4. Painel de Agenda (3 Dias)":
         st.title("📊 Painel da Agenda de Serviços")
@@ -858,7 +835,6 @@ else:
             finally:
                 db.close()
                 
-        # --- FILTRO DE TIPO DE O.S. NA LISTA DETALHADA ---
         with tab_detalhes:
             st.subheader("Consulta e Download do Relatório Detalhado")
             col_d1, col_c1, col_s1 = st.columns(3)
