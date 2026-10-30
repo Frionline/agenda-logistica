@@ -5,6 +5,9 @@ from sqlalchemy import or_
 import os
 from database import init_db, get_db
 
+# -----------------------------------------------------------------------------
+# CONFIGURAÇÃO E INICIALIZAÇÃO DO BANCO
+# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Frionline - Agendamento Logístico",
     page_icon="📅",
@@ -12,11 +15,20 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- FUNÇÕES COM CACHE DE ALTA PERFORMANCE ---
+# Inicializa o banco e registra os modelos no ORM via cache do Streamlit
+init_db()
 
-@st.cache_data(ttl=30)  # Mantém o resultado em memória por 30 segundos
+from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda
+from auth import autenticar_usuario, criar_admin_padrao, hash_senha
+
+criar_admin_padrao()
+
+# -----------------------------------------------------------------------------
+# HELPER DE CACHE E OTIMIZAÇÃO DE PERFORMANCE
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=30)
 def consultar_bloqueio_cached():
-    """Consulta rápida com cache para verificar se o Cadeado está fechado."""
+    """Consulta com cache de 30s para evitar requisições repetidas ao banco Neon."""
     db = get_db()
     try:
         bloqueio = db.query(BloqueioAgenda).filter_by(ativo=True).first()
@@ -27,6 +39,7 @@ def consultar_bloqueio_cached():
         db.close()
 
 def verificar_data_bloqueada(data_verificar):
+    """Verifica se uma determinada data está dentro de um intervalo com cadeado FECHADO."""
     if not data_verificar:
         return False
     ativo, dt_ini, dt_fim = consultar_bloqueio_cached()
@@ -35,32 +48,8 @@ def verificar_data_bloqueada(data_verificar):
     return False
 
 def limpar_cache_geral():
-    """Limpa o cache do Streamlit ao salvar/alterar dados para atualizar a tela na hora."""
+    """Força a limpeza do cache de dados quando qualquer alteração é gravada no banco."""
     st.cache_data.clear()
-# Inicializa o banco de dados via cache do Streamlit
-init_db()
-
-from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda
-from auth import autenticar_usuario, criar_admin_padrao, hash_senha
-
-criar_admin_padrao()
-
-# -----------------------------------------------------------------------------
-# HELPER: VERIFICAÇÃO DE BLOQUEIO DE DATA (CADEADO)
-# -----------------------------------------------------------------------------
-def verificar_data_bloqueada(data_verificar):
-    """Verifica se uma determinada data está dentro de um intervalo com cadeado FECHADO."""
-    if not data_verificar:
-        return False
-    db = get_db()
-    try:
-        bloqueios = db.query(BloqueioAgenda).filter(BloqueioAgenda.ativo == True).all()
-        for b in bloqueios:
-            if b.data_inicio <= data_verificar <= b.data_fim:
-                return True
-        return False
-    finally:
-        db.close()
 
 # -----------------------------------------------------------------------------
 # DIÁLOGOS E POP-UPS DE CONFIRMAÇÃO (@st.dialog)
@@ -77,6 +66,7 @@ def modal_confirmar_limpeza_pendentes():
             try:
                 db.query(ProtocoloPendente).delete()
                 db.commit()
+                limpar_cache_geral()
                 st.session_state["msg_sucesso_del"] = "Lista de pendentes zerada com sucesso!"
                 st.rerun()
             except Exception as e:
@@ -202,7 +192,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# LISTA DE CIDADES UNIFICADAS
+# LISTA DE CIDADES UNIFICADAS E TRATAMENTOS DE STRING
 # -----------------------------------------------------------------------------
 CIDADES = [
     "Nova Friburgo", "Lumiar", "Bom Jardim", "Duas Barras", 
@@ -261,6 +251,7 @@ def fazer_logout():
     st.session_state.usuario = None
     if "menu_navegacao" in st.session_state:
         del st.session_state["menu_navegacao"]
+    limpar_cache_geral()
     st.rerun()
 
 # -----------------------------------------------------------------------------
@@ -391,6 +382,7 @@ else:
                     if st.button("🔒 BLOQUEADO (Clique para Liberar)", type="primary", use_container_width=True):
                         bloqueio_atual.ativo = False
                         db.commit()
+                        limpar_cache_geral()
                         st.success("🔓 Período liberado para agendamentos com sucesso!")
                         st.rerun()
                 else:
@@ -403,6 +395,7 @@ else:
                         )
                         db.add(novo_b)
                         db.commit()
+                        limpar_cache_geral()
                         st.warning(f"🔒 Agendamentos bloqueados do dia {dt_ini_b.strftime('%d/%m/%Y')} até {dt_fim_b.strftime('%d/%m/%Y')}!")
                         st.rerun()
             
@@ -437,12 +430,13 @@ else:
                     data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
                 ).first()
                 
+                # Contagem otimizada direto na chave primária
                 agendadas_reais = db.query(Agendamento.id).filter(
-    Agendamento.data_agendamento == data_sel,
-    Agendamento.cidade == cidade_sel,
-    Agendamento.tipo_servico == servico_sel,
-    Agendamento.periodo == p
-).count()
+                    Agendamento.data_agendamento == data_sel,
+                    Agendamento.cidade == cidade_sel,
+                    Agendamento.tipo_servico == servico_sel,
+                    Agendamento.periodo == p
+                ).count()
                 
                 v_atual = registro.vagas_totais if registro else 0
                 
@@ -465,6 +459,7 @@ else:
                         )
                         db.add(novo_reg)
                 db.commit()
+                limpar_cache_geral()
                 st.success("Disponibilidade de vagas atualizada com sucesso!")
         finally:
             db.close()
@@ -543,8 +538,11 @@ else:
                         if verificar_data_bloqueada(v.data):
                             continue
 
-                        agendadas = db.query(Agendamento).filter_by(
-                            data_agendamento=v.data, cidade=cidade_valida, tipo_servico=servico_valido, periodo=v.periodo
+                        agendadas = db.query(Agendamento.id).filter(
+                            Agendamento.data_agendamento == v.data,
+                            Agendamento.cidade == cidade_valida,
+                            Agendamento.tipo_servico == servico_valido,
+                            Agendamento.periodo == v.periodo
                         ).count()
                         
                         if eh_reagendamento and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
@@ -616,6 +614,7 @@ else:
                                     dados_pendente.status = "Agendado"
 
                                 db.commit()
+                                limpar_cache_geral()
                                 st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
                                 st.session_state["input_proto_manual"] = ""
                                 st.rerun()
@@ -711,8 +710,11 @@ else:
                 for v in vagas_cad:
                     if verificar_data_bloqueada(v.data):
                         continue
-                    ag_qtd = db.query(Agendamento).filter_by(
-                        data_agendamento=v.data, cidade=cidade_confirm, tipo_servico=servico_confirm, periodo=v.periodo
+                    ag_qtd = db.query(Agendamento.id).filter(
+                        Agendamento.data_agendamento == v.data,
+                        Agendamento.cidade == cidade_confirm,
+                        Agendamento.tipo_servico == servico_confirm,
+                        Agendamento.periodo == v.periodo
                     ).count()
                     if (v.vagas_totais - ag_qtd) > 0:
                         vagas_disp.append(v)
@@ -770,6 +772,7 @@ else:
                         db.add(novo_a)
                         p_sel.status = "Agendado"
                         db.commit()
+                        limpar_cache_geral()
                         st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
                         st.rerun()
 
@@ -777,6 +780,7 @@ else:
                     proto_removido = p_sel.protocolo
                     db.delete(p_sel)
                     db.commit()
+                    limpar_cache_geral()
                     st.session_state["msg_sucesso_pendente"] = f"🗑️ A O.S. de Protocolo {proto_removido} foi excluída com sucesso das Pendências!"
                     st.rerun()
         finally:
@@ -818,8 +822,12 @@ else:
                             data=dia_atual, cidade=cid_painel, tipo_servico=serv_painel, periodo=p
                         ).first()
                         
-                        agendadas_reais = db.query(Agendamento).filter_by(
-                            data_agendamento=dia_atual, cidade=cid_painel, tipo_servico=serv_painel, periodo=p
+                        # Contagem otimizada direto na chave primária
+                        agendadas_reais = db.query(Agendamento.id).filter(
+                            Agendamento.data_agendamento == dia_atual,
+                            Agendamento.cidade == cid_painel,
+                            Agendamento.tipo_servico == serv_painel,
+                            Agendamento.periodo == p
                         ).count()
                         
                         totais = vaga.vagas_totais if vaga else 0
@@ -1035,6 +1043,7 @@ else:
                                     novos_pendentes += 1
 
                         db.commit()
+                        limpar_cache_geral()
                         
                         st.markdown("---")
                         col_res1, col_res2, col_res3 = st.columns(3)
@@ -1071,13 +1080,14 @@ else:
                 with col_del2:
                     st.markdown("#### 2. Apagar Agendamentos por Data")
                     data_del = st.date_input("Selecione a Data para Apagar", value=date.today(), format="DD/MM/YYYY")
-                    total_ag_data = db.query(Agendamento).filter_by(data_agendamento=data_del).count()
+                    total_ag_data = db.query(Agendamento.id).filter(Agendamento.data_agendamento == data_del).count()
                     st.write(f"Existem **{total_ag_data}** agendamentos para o dia {data_del.strftime('%d/%m/%Y')}.")
                     
                     if st.button(f"🗑️ Apagar Agendamentos do dia {data_del.strftime('%d/%m/%Y')}", use_container_width=True):
                         if total_ag_data > 0:
                             db.query(Agendamento).filter_by(data_agendamento=data_del).delete()
                             db.commit()
+                            limpar_cache_geral()
                             st.session_state["msg_sucesso_del"] = f"Agendamentos do dia {data_del.strftime('%d/%m/%Y')} apagados com sucesso!"
                             st.rerun()
                         else:
