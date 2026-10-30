@@ -412,9 +412,12 @@ else:
                     data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
                 ).first()
                 
-                agendadas_reais = db.query(Agendamento).filter_by(
-                    data_agendamento=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
-                ).count()
+                agendadas_reais = db.query(Agendamento.id).filter(
+    Agendamento.data_agendamento == data_sel,
+    Agendamento.cidade == cidade_sel,
+    Agendamento.tipo_servico == servico_sel,
+    Agendamento.periodo == p
+).count()
                 
                 v_atual = registro.vagas_totais if registro else 0
                 
