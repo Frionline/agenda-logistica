@@ -14,8 +14,7 @@ def get_engine():
         pool_size=5,
         max_overflow=10,
         connect_args={
-            "options": "-c statement_timeout=30000",
-            "prepared_statement_cache_size": 0  # Crucial para conexões com Pooler/PgBouncer no Neon
+            "options": "-c statement_timeout=30000"
         }
     )
 
