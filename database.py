@@ -2,7 +2,7 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Declaração central da Base do ORM (evita importação circular)
+# Declaração central da Base do ORM
 Base = declarative_base()
 
 # Lê a URL do Neon configurada nos segredos do Streamlit Cloud
@@ -20,16 +20,15 @@ def get_engine():
 engine = get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-@st.cache_resource
 def init_db():
     import models  # Importa os modelos para registrá-los no metadata antes do create_all
     
     # Cria novas tabelas declaradas no models (incluindo bloqueios_agenda)
     Base.metadata.create_all(bind=engine)
     
-    # Executa verificações e criações manuais de colunas/tabelas caso faltem
+    # Executa migrações diretas no PostgreSQL Neon
     with engine.connect() as conn:
-        # Garante a criação da tabela de bloqueio se não tiver sido criada
+        # Garante a criação da tabela de bloqueio
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS bloqueios_agenda (
                 id SERIAL PRIMARY KEY,
@@ -45,12 +44,27 @@ def init_db():
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS id_contrato VARCHAR(50);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
         conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS criador_excel VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS nome_cliente VARCHAR(200);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS rua VARCHAR(200);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS bairro VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS categoria_4 VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS dados_completos BOOLEAN DEFAULT FALSE;"))
         
         # Migração das colunas de protocolos pendentes
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS id_cliente VARCHAR(50);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS id_contrato VARCHAR(50);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS agendado_por VARCHAR(100);"))
         conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS criador_excel VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS nome_cliente VARCHAR(200);"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS rua VARCHAR(200);"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS bairro VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE protocolos_pendentes ADD COLUMN IF NOT EXISTS categoria_4 VARCHAR(100);"))
+        
+        # Atualização/Padronização dos nomes das cidades unificadas no banco de dados
+        conn.execute(text("UPDATE agendamentos SET cidade = 'Cordeiro e Cantagalo' WHERE LOWER(cidade) IN ('cordeiro', 'cantagalo');"))
+        conn.execute(text("UPDATE agendamentos SET cidade = 'Trajano e Madalena' WHERE LOWER(cidade) IN ('trajano', 'madalena', 'santa maria madalena');"))
+        conn.execute(text("UPDATE disponibilidade_vagas SET cidade = 'Cordeiro e Cantagalo' WHERE LOWER(cidade) IN ('cordeiro', 'cantagalo');"))
+        conn.execute(text("UPDATE disponibilidade_vagas SET cidade = 'Trajano e Madalena' WHERE LOWER(cidade) IN ('trajano', 'madalena', 'santa maria madalena');"))
         
         conn.commit()
 
