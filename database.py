@@ -11,8 +11,12 @@ def get_engine():
     return create_engine(
         DATABASE_URL,
         pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20
+        pool_size=5,
+        max_overflow=10,
+        connect_args={
+            "options": "-c statement_timeout=30000",
+            "prepared_statement_cache_size": 0  # Crucial para conexões com Pooler/PgBouncer no Neon
+        }
     )
 
 engine = get_engine()
@@ -20,7 +24,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     import models
-    # Garante o registro dos modelos ORM
     Base.metadata.create_all(bind=engine)
 
 def get_db():
