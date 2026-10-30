@@ -281,7 +281,7 @@ def fazer_logout():
     st.rerun()
 
 # -----------------------------------------------------------------------------
-# TELA DE LOGIN
+# TELA DE LOGIN OU MENU PRINCIPAL
 # -----------------------------------------------------------------------------
 if st.session_state.usuario is None:
     col_logo1, col_logo2 = st.columns([1.8, 2], vertical_alignment="center")
@@ -386,10 +386,10 @@ else:
 
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
 
-   # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # MÓDULO 1: GESTÃO DE VAGAS + CADEADO DE BLOQUEIO DINÂMICO
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "1. Gestão de Vagas (Logística)":
+    if menu_selecionado == "1. Gestão de Vagas (Logística)":
         st.title("📅 Gestão de Disponibilidade de Vagas")
         
         st.markdown("### 🔒 Bloqueio de Agendamento por Período (Cadeado Global)")
@@ -406,7 +406,6 @@ else:
             with c_cad3:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if bloqueio_atual:
-                    # SE JÁ ESTÁ BLOQUEADO: Permite atualizar o período diretamente sem precisar abrir
                     btn_atualizar_bloqueio = st.button("🔄 Atualizar Período de Bloqueio", type="primary", use_container_width=True)
                     btn_liberar_bloqueio = st.button("🔓 Liberar Agenda (Abrir Cadeado)", use_container_width=True)
                     
@@ -426,7 +425,6 @@ else:
                         st.success("🔓 Período liberado para agendamentos com sucesso!")
                         st.rerun()
                 else:
-                    # SE ESTÁ LIBERADO: Exibe o botão para fechar o cadeado
                     if st.button("🔒 Bloquear Período (Fechar Cadeado)", type="primary", use_container_width=True):
                         novo_b = BloqueioAgenda(
                             data_inicio=dt_ini_b,
@@ -503,7 +501,8 @@ else:
                 st.success("Disponibilidade de vagas atualizada com sucesso!")
         finally:
             db.close()
-# -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
     # MÓDULO 2: AGENDAMENTO MANUAL
     # -------------------------------------------------------------------------
     elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
@@ -512,11 +511,9 @@ else:
         if "msg_sucesso_manual" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_manual"))
             
-        # Callback para resetar o campo de busca de forma segura antes do widget ser desenhado
         def limpar_campo_protocolo():
             st.session_state["input_proto_manual"] = ""
 
-        # Garante a inicialização da variável no session_state
         if "input_proto_manual" not in st.session_state:
             st.session_state["input_proto_manual"] = ""
 
@@ -579,7 +576,6 @@ else:
                     
                     vagas_disponiveis = []
                     for v in vagas_cadastradas:
-                        # Omitir datas com CADEADO FECHADO
                         if verificar_data_bloqueada(v.data):
                             continue
 
@@ -622,7 +618,6 @@ else:
                         
                         obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if (agendamento_existente and eh_reagendamento) else "")
                         
-                        # Verifica bloqueio em tempo real para exibir o alerta proativo
                         bloqueado_agora = verificar_data_bloqueada(data_escolhida) if data_escolhida else False
                         if bloqueado_agora:
                             st.error(f"🔒 A data {data_escolhida.strftime('%d/%m/%Y')} está BLOQUEADA pelo CADEADO logístico.")
@@ -665,12 +660,12 @@ else:
 
                                 db.commit()
                                 limpar_cache_geral()
-                                # Limpa o campo via callback seguro sem causar StreamlitWidgetAlreadyInstantiatedError
                                 limpar_campo_protocolo()
                                 st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
                                 st.rerun()
         finally:
             db.close()
+
     # -------------------------------------------------------------------------
     # MÓDULO 3: CENTRAL DE PENDÊNCIAS
     # -------------------------------------------------------------------------
@@ -1242,7 +1237,6 @@ else:
                                         st.session_state["msg_sucesso_usr"] = f"Cadastro de {user_to_edit.nome} atualizado com sucesso!"
                                         st.rerun()
                         
-                        # ZONA DE PERIGO: BOTÃO DE EXCLUSÃO (APENAS ADMIN)
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.markdown("---")
                         st.markdown("#### 🚨 Zona de Perigo")
