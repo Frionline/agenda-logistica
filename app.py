@@ -488,8 +488,7 @@ else:
                 st.success("Disponibilidade de vagas atualizada com sucesso!")
         finally:
             db.close()
-
-   # -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
     # MÓDULO 2: AGENDAMENTO MANUAL
     # -------------------------------------------------------------------------
     elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
@@ -498,6 +497,11 @@ else:
         if "msg_sucesso_manual" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_manual"))
             
+        # Callback para resetar o campo de busca de forma segura antes do widget ser desenhado
+        def limpar_campo_protocolo():
+            st.session_state["input_proto_manual"] = ""
+
+        # Garante a inicialização da variável no session_state
         if "input_proto_manual" not in st.session_state:
             st.session_state["input_proto_manual"] = ""
 
@@ -560,7 +564,7 @@ else:
                     
                     vagas_disponiveis = []
                     for v in vagas_cadastradas:
-                        # TRAVA RIGOROSA: descarta datas bloqueadas pelo Cadeado diretamente na listagem
+                        # Omitir datas com CADEADO FECHADO
                         if verificar_data_bloqueada(v.data):
                             continue
 
@@ -578,7 +582,7 @@ else:
                             vagas_disponiveis.append(v)
                     
                     if not vagas_disponiveis:
-                        st.error("🔒 Não existem vagas disponíveis para esta cidade/serviço no momento (ou o período selecionado está BLOQUEADO pelo Cadeado).")
+                        st.error("🔒 **AGENDA FECHADA / SEM VAGAS:** Não há vagas disponíveis para a cidade e serviço selecionados (ou o período está bloqueado pelo CADEADO logístico).")
                     else:
                         opcoes_datas = sorted(list(set([v.data for v in vagas_disponiveis])))
                         
@@ -603,15 +607,16 @@ else:
                         
                         obs = st.text_area("Observações (ex: Primeira da manhã)", value=agendamento_existente.observacoes if (agendamento_existente and eh_reagendamento) else "")
                         
-                        if st.button("Confirmar Agendamento", type="primary"):
-                            # Validação 1: Campos nulos
+                        # Verifica bloqueio em tempo real para exibir o alerta proativo
+                        bloqueado_agora = verificar_data_bloqueada(data_escolhida) if data_escolhida else False
+                        if bloqueado_agora:
+                            st.error(f"🔒 A data {data_escolhida.strftime('%d/%m/%Y')} está BLOQUEADA pelo CADEADO logístico.")
+
+                        if st.button("Confirmar Agendamento", type="primary", disabled=bloqueado_agora):
                             if not cidade_valida or not servico_valido or data_escolhida is None or periodo_escolhido is None:
                                 st.error("⚠️ Preenchimento obrigatório! Por favor, selecione Cidade, Serviço, Data e Período.")
-                            
-                            # Validação 2: Trava de Segurança do Cadeado Global
-                            elif verificar_data_bloqueada(data_escolhida):
-                                st.error(f"🔒 BLOQUEIO ATIVO: A data {data_escolhida.strftime('%d/%m/%Y')} está com o CADEADO FECHADO. Não é possível realizar agendamentos nesta data.")
-                            
+                            elif bloqueado_agora:
+                                st.error("🔒 Não é possível agendar em datas bloqueadas pelo Cadeado.")
                             else:
                                 if eh_reagendamento and agendamento_existente:
                                     agendamento_existente.cidade = cidade_valida
@@ -645,12 +650,12 @@ else:
 
                                 db.commit()
                                 limpar_cache_geral()
-                                st.session_state["input_proto_manual"] = ""
+                                # Limpa o campo via callback seguro sem causar StreamlitWidgetAlreadyInstantiatedError
+                                limpar_campo_protocolo()
                                 st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
                                 st.rerun()
         finally:
             db.close()
-
     # -------------------------------------------------------------------------
     # MÓDULO 3: CENTRAL DE PENDÊNCIAS
     # -------------------------------------------------------------------------
