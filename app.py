@@ -386,10 +386,10 @@ else:
 
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
 
+   # -------------------------------------------------------------------------
+    # MÓDULO 1: GESTÃO DE VAGAS + CADEADO DE BLOQUEIO DINÂMICO
     # -------------------------------------------------------------------------
-    # MÓDULO 1: GESTÃO DE VAGAS + CADEADO DE BLOQUEIO
-    # -------------------------------------------------------------------------
-    if menu_selecionado == "1. Gestão de Vagas (Logística)":
+    elif menu_selecionado == "1. Gestão de Vagas (Logística)":
         st.title("📅 Gestão de Disponibilidade de Vagas")
         
         st.markdown("### 🔒 Bloqueio de Agendamento por Período (Cadeado Global)")
@@ -397,22 +397,37 @@ else:
         try:
             bloqueio_atual = db.query(BloqueioAgenda).filter_by(ativo=True).first()
             
-            c_cad1, c_cad2, c_cad3 = st.columns([1.5, 1.5, 1])
+            c_cad1, c_cad2, c_cad3 = st.columns([1.5, 1.5, 1.5])
             with c_cad1:
                 dt_ini_b = st.date_input("Data Inicial do Bloqueio", value=bloqueio_atual.data_inicio if bloqueio_atual else date.today(), format="DD/MM/YYYY")
             with c_cad2:
                 dt_fim_b = st.date_input("Data Final do Bloqueio", value=bloqueio_atual.data_fim if bloqueio_atual else date.today() + timedelta(days=7), format="DD/MM/YYYY")
+            
             with c_cad3:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if bloqueio_atual:
-                    if st.button("🔒 BLOQUEADO (Clique para Liberar)", type="primary", use_container_width=True):
+                    # SE JÁ ESTÁ BLOQUEADO: Permite atualizar o período diretamente sem precisar abrir
+                    btn_atualizar_bloqueio = st.button("🔄 Atualizar Período de Bloqueio", type="primary", use_container_width=True)
+                    btn_liberar_bloqueio = st.button("🔓 Liberar Agenda (Abrir Cadeado)", use_container_width=True)
+                    
+                    if btn_atualizar_bloqueio:
+                        bloqueio_atual.data_inicio = dt_ini_b
+                        bloqueio_atual.data_fim = dt_fim_b
+                        bloqueio_atual.criado_por = usr["nome"]
+                        db.commit()
+                        limpar_cache_geral()
+                        st.success(f"🔒 Período de bloqueio atualizado com sucesso até {dt_fim_b.strftime('%d/%m/%Y')}!")
+                        st.rerun()
+                        
+                    if btn_liberar_bloqueio:
                         bloqueio_atual.ativo = False
                         db.commit()
                         limpar_cache_geral()
                         st.success("🔓 Período liberado para agendamentos com sucesso!")
                         st.rerun()
                 else:
-                    if st.button("🔓 LIBERADO (Clique para Bloquear)", use_container_width=True):
+                    # SE ESTÁ LIBERADO: Exibe o botão para fechar o cadeado
+                    if st.button("🔒 Bloquear Período (Fechar Cadeado)", type="primary", use_container_width=True):
                         novo_b = BloqueioAgenda(
                             data_inicio=dt_ini_b,
                             data_fim=dt_fim_b,
