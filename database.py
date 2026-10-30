@@ -1,9 +1,11 @@
 import streamlit as st
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from models import Base
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Lê a URL do Neon configurada no segredo do Streamlit Cloud
+# Declaração central da Base do ORM (evita importação circular)
+Base = declarative_base()
+
+# Lê a URL do Neon configurada nos segredos do Streamlit Cloud
 DATABASE_URL = st.secrets["postgres"]["url"]
 
 @st.cache_resource
@@ -20,6 +22,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @st.cache_resource
 def init_db():
+    import models  # Importa os modelos para registrá-los no metadata antes do create_all
     Base.metadata.create_all(bind=engine)
     
     # Executado apenas uma vez ao iniciar a aplicação (evita gargalo de conexões)
