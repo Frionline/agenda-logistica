@@ -12,6 +12,31 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- FUNÇÕES COM CACHE DE ALTA PERFORMANCE ---
+
+@st.cache_data(ttl=30)  # Mantém o resultado em memória por 30 segundos
+def consultar_bloqueio_cached():
+    """Consulta rápida com cache para verificar se o Cadeado está fechado."""
+    db = get_db()
+    try:
+        bloqueio = db.query(BloqueioAgenda).filter_by(ativo=True).first()
+        if bloqueio:
+            return (True, bloqueio.data_inicio, bloqueio.data_fim)
+        return (False, None, None)
+    finally:
+        db.close()
+
+def verificar_data_bloqueada(data_verificar):
+    if not data_verificar:
+        return False
+    ativo, dt_ini, dt_fim = consultar_bloqueio_cached()
+    if ativo and dt_ini and dt_fim:
+        return dt_ini <= data_verificar <= dt_fim
+    return False
+
+def limpar_cache_geral():
+    """Limpa o cache do Streamlit ao salvar/alterar dados para atualizar a tela na hora."""
+    st.cache_data.clear()
 # Inicializa o banco de dados via cache do Streamlit
 init_db()
 
