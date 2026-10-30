@@ -4,16 +4,26 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import or_
 import os
 from database import init_db, get_db
-from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente
+from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda
 from auth import autenticar_usuario, criar_admin_padrao, hash_senha
 
-# Trecho temporário para redefinir a senha do admin
+# -----------------------------------------------------------------------------
+# LIMPEZA INICIAL DOS DADOS DE TESTE DE PENDÊNCIAS (SOLICITADA)
+# -----------------------------------------------------------------------------
 db_temp = get_db()
-admin_temp = db_temp.query(Usuario).filter_by(email="admin@frionline.com.br").first()
-if admin_temp:
-    admin_temp.senha_hash = hash_senha("admin123")
+try:
+    # Redefinição de senha do admin padrão
+    admin_temp = db_temp.query(Usuario).filter_by(email="admin@frionline.com.br").first()
+    if admin_temp:
+        admin_temp.senha_hash = hash_senha("admin123")
+    
+    # Limpa tabela de pendências (dados de teste)
+    db_temp.query(ProtocoloPendente).delete()
     db_temp.commit()
-db_temp.close()
+except Exception as e:
+    db_temp.rollback()
+finally:
+    db_temp.close()
 
 st.set_page_config(
     page_title="Frionline - Agendamento Logístico",
@@ -24,6 +34,23 @@ st.set_page_config(
 
 init_db()
 criar_admin_padrao()
+
+# -----------------------------------------------------------------------------
+# HELPER: VERIFICAÇÃO DE BLOQUEIO DE DATA (CADEADO)
+# -----------------------------------------------------------------------------
+def verificar_data_bloqueada(data_verificar):
+    """Verifica se uma determinada data está dentro de um intervalo com cadeado FECHADO."""
+    if not data_verificar:
+        return False
+    db = get_db()
+    try:
+        bloqueios = db.query(BloqueioAgenda).filter(BloqueioAgenda.ativo == True).all()
+        for b in bloqueios:
+            if b.data_inicio <= data_verificar <= b.data_fim:
+                return True
+        return False
+    finally:
+        db.close()
 
 # -----------------------------------------------------------------------------
 # DIÁLOGOS E POP-UPS DE CONFIRMAÇÃO (@st.dialog)
@@ -170,10 +197,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Lista de Cidades e Serviços Padronizados
+# -----------------------------------------------------------------------------
+# LISTA DE CIDADES ATUALIZADA (UNIFICAÇÃO CORDEIRO/CANTAGALO E TRAJANO/MADALENA)
+# -----------------------------------------------------------------------------
 CIDADES = [
-    "Nova Friburgo", "Lumiar", "Bom Jardim", "Duas Barras", "Cordeiro",
-    "Cantagalo", "Macuco", "Trajano", "Madalena", "São Fidelis",
+    "Nova Friburgo", "Lumiar", "Bom Jardim", "Duas Barras", 
+    "Cordeiro e Cantagalo", "Macuco", "Trajano e Madalena", "São Fidelis",
     "Itaocara", "Cardoso Moreira", "Cambuci", "Italva"
 ]
 
@@ -188,6 +217,20 @@ def limpar_str(val):
     if val_str.endswith(".0"):
         val_str = val_str[:-2]
     return val_str
+
+def normalizar_cidade(cidade_str):
+    if not cidade_str or pd.isna(cidade_str):
+        return CIDADES[0]
+    c = str(cidade_str).strip()
+    c_lower = c.lower()
+    if "cordeiro" in c_lower or "cantagalo" in c_lower:
+        return "Cordeiro e Cantagalo"
+    elif "trajano" in c_lower or "madalena" in c_lower:
+        return "Trajano e Madalena"
+    for cid in CIDADES:
+        if cid.lower() in c_lower:
+            return cid
+    return c
 
 def normalizar_servico(serv_str):
     if not serv_str or pd.isna(serv_str):
@@ -220,8 +263,6 @@ def fazer_logout():
 # TELA DE LOGIN (DESIGN CORPORATIVO FRIONLINE)
 # -----------------------------------------------------------------------------
 if st.session_state.usuario is None:
-    
-    # Cabeçalho do App com Logo Ampliado e Badge Centralizado
     col_logo1, col_logo2 = st.columns([1.8, 2], vertical_alignment="center")
     with col_logo1:
         if os.path.exists("logo.png"):
@@ -239,7 +280,6 @@ if st.session_state.usuario is None:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Hero Banner Principal com Emoji de Agenda 📅
     st.markdown("""
         <div class="hero-container">
             <h1 style="color: #FFFFFF; margin-bottom: 8px; font-size: 2.2rem; font-weight: 800;">
@@ -251,7 +291,6 @@ if st.session_state.usuario is None:
         </div>
     """, unsafe_allow_html=True)
 
-    # Layout de Login em 2 Colunas
     col_info, col_login = st.columns([1.1, 0.9], gap="large")
 
     with col_info:
@@ -289,7 +328,6 @@ if st.session_state.usuario is None:
 else:
     usr = st.session_state.usuario
     
-    # Exibição de Logo na Barra Lateral
     if os.path.exists("logo.png"):
         st.sidebar.image("logo.png", use_column_width=True)
     elif os.path.exists("logo.jpg"):
@@ -320,20 +358,59 @@ else:
     if usr["perfil"] == "admin":
         opcoes_menu.append("6. Gestão de Usuários")
     
-    # Opção disponível para todos os colaboradores logados
     opcoes_menu.append("🔑 Alterar Minha Senha")
 
-    # Garante que o estado do menu permaneça válido entre renderizações
     if "menu_navegacao" in st.session_state and st.session_state["menu_navegacao"] not in opcoes_menu:
         st.session_state["menu_navegacao"] = opcoes_menu[0]
 
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
 
     # -------------------------------------------------------------------------
-    # MÓDULO 1: GESTÃO DE VAGAS (LOGÍSTICA)
+    # MÓDULO 1: GESTÃO DE VAGAS (LOGÍSTICA) + BOTÃO CADEADO (BLOQUEIO)
     # -------------------------------------------------------------------------
     if menu_selecionado == "1. Gestão de Vagas (Logística)":
         st.title("📅 Gestão de Disponibilidade de Vagas")
+        
+        # --- PAINEL DO CADEADO (BLOQUEIO DE DATAS) ---
+        st.markdown("### 🔒 Bloqueio de Agendamento por Período (Cadeado Global)")
+        db = get_db()
+        try:
+            bloqueio_atual = db.query(BloqueioAgenda).filter_by(ativo=True).first()
+            
+            c_cad1, c_cad2, c_cad3 = st.columns([1.5, 1.5, 1])
+            with c_cad1:
+                dt_ini_b = st.date_input("Data Inicial do Bloqueio", value=bloqueio_atual.data_inicio if bloqueio_atual else date.today(), format="DD/MM/YYYY")
+            with c_cad2:
+                dt_fim_b = st.date_input("Data Final do Bloqueio", value=bloqueio_atual.data_fim if bloqueio_atual else date.today() + timedelta(days=7), format="DD/MM/YYYY")
+            with c_cad3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if bloqueio_atual:
+                    if st.button("🔒 BLOQUEADO (Clique para Liberar)", type="primary", use_container_width=True):
+                        bloqueio_atual.ativo = False
+                        db.commit()
+                        st.success("🔓 Período liberado para agendamentos com sucesso!")
+                        st.rerun()
+                else:
+                    if st.button("🔓 LIBERADO (Clique para Bloquear)", use_container_width=True):
+                        novo_b = BloqueioAgenda(
+                            data_inicio=dt_ini_b,
+                            data_fim=dt_fim_b,
+                            ativo=True,
+                            criado_por=usr["nome"]
+                        )
+                        db.add(novo_b)
+                        db.commit()
+                        st.warning(f"🔒 Agendamentos bloqueados do dia {dt_ini_b.strftime('%d/%m/%Y')} até {dt_fim_b.strftime('%d/%m/%Y')}!")
+                        st.rerun()
+            
+            if bloqueio_atual:
+                st.error(f"⚠️ **CADEADO FECHADO:** Agendamentos bloqueados para todas as O.S. entre **{bloqueio_atual.data_inicio.strftime('%d/%m/%Y')}** e **{bloqueio_atual.data_fim.strftime('%d/%m/%Y')}**.")
+            else:
+                st.info("ℹ️ **CADEADO ABERTO:** O preenchimento de vagas está liberado para todas as datas.")
+        finally:
+            db.close()
+            
+        st.markdown("---")
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -457,6 +534,10 @@ else:
                     
                     vagas_disponiveis = []
                     for v in vagas_cadastradas:
+                        # Ignora vagas de datas que estejam com CADEADO FECHADO
+                        if verificar_data_bloqueada(v.data):
+                            continue
+
                         agendadas = db.query(Agendamento).filter_by(
                             data_agendamento=v.data, cidade=cidade_valida, tipo_servico=servico_valido, periodo=v.periodo
                         ).count()
@@ -468,7 +549,7 @@ else:
                             vagas_disponiveis.append(v)
                     
                     if not vagas_disponiveis:
-                        st.error("Não existem vagas disponíveis para esta cidade e serviço no momento.")
+                        st.error("Não existem vagas disponíveis (ou as datas estão bloqueadas pelo Cadeado) para esta cidade e serviço no momento.")
                     else:
                         opcoes_datas = sorted(list(set([v.data for v in vagas_disponiveis])))
                         
@@ -496,6 +577,8 @@ else:
                         if st.button("Confirmar Agendamento", type="primary"):
                             if not cidade_valida or not servico_valido or data_escolhida is None or periodo_escolhido is None:
                                 st.error("⚠️ Preenchimento obrigatório! Por favor, selecione a Cidade, o Serviço, a Data e o Período antes de confirmar.")
+                            elif verificar_data_bloqueada(data_escolhida):
+                                st.error(f"🔒 A data {data_escolhida.strftime('%d/%m/%Y')} está bloqueada pelo CADEADO logístico. Não é possível preencher vagas.")
                             else:
                                 if eh_reagendamento and agendamento_existente:
                                     agendamento_existente.cidade = cidade_valida
@@ -600,7 +683,8 @@ else:
                 with c_info2:
                     st.markdown(f"**Criador (Coluna AK):** {p_sel.criador_excel or '-'}")
                     
-                    cid_padrao = p_sel.cidade if (p_sel.cidade in CIDADES) else CIDADES[0]
+                    cid_norm_p = normalizar_cidade(p_sel.cidade)
+                    cid_padrao = cid_norm_p if (cid_norm_p in CIDADES) else CIDADES[0]
                     idx_c = CIDADES.index(cid_padrao)
                     cidade_confirm = st.selectbox("Confirmar Cidade", CIDADES, index=idx_c)
                     
@@ -620,6 +704,8 @@ else:
                 
                 vagas_disp = []
                 for v in vagas_cad:
+                    if verificar_data_bloqueada(v.data):
+                        continue
                     ag_qtd = db.query(Agendamento).filter_by(
                         data_agendamento=v.data, cidade=cidade_confirm, tipo_servico=servico_confirm, periodo=v.periodo
                     ).count()
@@ -635,9 +721,8 @@ else:
                 obs_sel = st.text_input("Observações do Agendamento")
                 
                 if not vagas_disp:
-                    st.error(f"⚠️ Não existem vagas cadastradas ou disponíveis para a cidade '{cidade_confirm}' e serviço '{servico_confirm}' na Gestão de Vagas.")
+                    st.error(f"⚠️ Não existem vagas disponíveis (ou as datas estão bloqueadas pelo Cadeado) para a cidade '{cidade_confirm}' e serviço '{servico_confirm}'.")
 
-                # Utilização de vertical_alignment="bottom" para alinhamento perfeito dos botões
                 col_btn1, col_btn2 = st.columns([2, 1], vertical_alignment="bottom")
                 
                 with col_btn1:
@@ -656,29 +741,32 @@ else:
                     )
 
                 if btn_agendar:
-                    novo_a = Agendamento(
-                        cliente_id=p_sel.protocolo,
-                        id_cliente=p_sel.id_cliente,
-                        id_contrato=p_sel.id_contrato,
-                        cidade=cidade_confirm,
-                        tipo_servico=servico_confirm,
-                        data_agendamento=data_sel,
-                        periodo=periodo_sel,
-                        observacoes=obs_sel,
-                        status="Agendado",
-                        agendado_por=usr["nome"],
-                        criador_excel=p_sel.criador_excel,
-                        nome_cliente=p_sel.nome_cliente,
-                        rua=p_sel.rua,
-                        bairro=p_sel.bairro,
-                        categoria_4=p_sel.categoria_4,
-                        dados_completos=True
-                    )
-                    db.add(novo_a)
-                    p_sel.status = "Agendado"
-                    db.commit()
-                    st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
-                    st.rerun()
+                    if verificar_data_bloqueada(data_sel):
+                        st.error("🔒 Esta data está bloqueada pelo CADEADO logístico.")
+                    else:
+                        novo_a = Agendamento(
+                            cliente_id=p_sel.protocolo,
+                            id_cliente=p_sel.id_cliente,
+                            id_contrato=p_sel.id_contrato,
+                            cidade=cidade_confirm,
+                            tipo_servico=servico_confirm,
+                            data_agendamento=data_sel,
+                            periodo=periodo_sel,
+                            observacoes=obs_sel,
+                            status="Agendado",
+                            agendado_por=usr["nome"],
+                            criador_excel=p_sel.criador_excel,
+                            nome_cliente=p_sel.nome_cliente,
+                            rua=p_sel.rua,
+                            bairro=p_sel.bairro,
+                            categoria_4=p_sel.categoria_4,
+                            dados_completos=True
+                        )
+                        db.add(novo_a)
+                        p_sel.status = "Agendado"
+                        db.commit()
+                        st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
+                        st.rerun()
 
                 if btn_excluir_os:
                     proto_removido = p_sel.protocolo
@@ -714,7 +802,8 @@ else:
                 
                 for i in range(3):
                     dia_atual = data_inicio + timedelta(days=i)
-                    st.subheader(f"📅 Dia {dia_atual.strftime('%d/%m/%Y')} ({dia_atual.strftime('%A')})")
+                    lbl_bloqueio = " 🔒 [BLOQUEADO]" if verificar_data_bloqueada(dia_atual) else ""
+                    st.subheader(f"📅 Dia {dia_atual.strftime('%d/%m/%Y')} ({dia_atual.strftime('%A')}){lbl_bloqueio}")
                     
                     disp_row = []
                     agend_row = []
@@ -769,24 +858,29 @@ else:
             finally:
                 db.close()
                 
+        # --- FILTRO POR TIPO DE O.S. ACRESCENTADO ---
         with tab_detalhes:
             st.subheader("Consulta e Download do Relatório Detalhado")
-            col_d1, col_c1 = st.columns(2)
+            col_d1, col_c1, col_s1 = st.columns(3)
             with col_d1:
                 data_consulta = st.date_input("Data da Consulta", value=date.today(), format="DD/MM/YYYY")
             with col_c1:
                 cidade_filtro = st.selectbox("Filtrar Cidade", ["Todas"] + CIDADES)
+            with col_s1:
+                servico_filtro = st.selectbox("Filtrar Tipo de O.S.", ["Todos"] + SERVICOS)
                 
             db = get_db()
             try:
                 query = db.query(Agendamento).filter(Agendamento.data_agendamento == data_consulta)
                 if cidade_filtro != "Todas":
                     query = query.filter(Agendamento.cidade == cidade_filtro)
+                if servico_filtro != "Todos":
+                    query = query.filter(Agendamento.tipo_servico == servico_filtro)
                     
                 agendamentos = query.all()
                 
                 if not agendamentos:
-                    st.info(f"Nenhum agendamento para {data_consulta.strftime('%d/%m/%Y')}.")
+                    st.info(f"Nenhum agendamento localizado para os filtros selecionados no dia {data_consulta.strftime('%d/%m/%Y')}.")
                 else:
                     dados_tabela = []
                     for a in agendamentos:
@@ -875,7 +969,8 @@ else:
                             num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
                             rua_c = f"{rua_base}, {num_rua}".strip(", ") if rua_base else None
                             bairro_c = str(row.get('Bairro', '')).strip() if pd.notna(row.get('Bairro')) else None
-                            cidade_c = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
+                            cidade_raw = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
+                            cidade_c = normalizar_cidade(cidade_raw) if cidade_raw else None
                             
                             cat_val = str(row.get('Catálogo', '')).strip() if pd.notna(row.get('Catálogo')) else ""
                             tg_val = str(row.get('Tipo Geral', '')).strip() if pd.notna(row.get('Tipo Geral')) else ""
@@ -1101,7 +1196,7 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 7: ALTERAR MINHA SENHA (DISPONÍVEL PARA TODOS OS COLABORADORES)
+    # MÓDULO 7: ALTERAR MINHA SENHA
     # -------------------------------------------------------------------------
     elif menu_selecionado == "🔑 Alterar Minha Senha":
         st.title("🔑 Alterar Minha Senha")
