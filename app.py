@@ -78,6 +78,32 @@ def modal_confirmar_limpeza_pendentes():
         if st.button("Cancelar", use_container_width=True):
             st.rerun()
 
+@st.dialog("⚠️ Confirmar Exclusão de Usuário")
+def modal_confirmar_exclusao_usuario(user_id, nome_user, email_user):
+    st.warning(f"Tem certeza de que deseja apagar o usuário **{nome_user}** (`{email_user}`)?")
+    st.caption("Esta ação é permanente e removerá o acesso deste colaborador ao sistema.")
+    
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        if st.button("Sim, apagar usuário", type="primary", use_container_width=True):
+            db = get_db()
+            try:
+                usr_del = db.query(Usuario).filter_by(id=user_id).first()
+                if usr_del:
+                    db.delete(usr_del)
+                    db.commit()
+                    limpar_cache_geral()
+                    st.session_state["msg_sucesso_usr"] = f"Usuário {nome_user} excluído com sucesso!"
+                    st.rerun()
+            except Exception as e:
+                db.rollback()
+                st.error(f"Erro ao excluir usuário: {e}")
+            finally:
+                db.close()
+    with col_m2:
+        if st.button("Cancelar", use_container_width=True):
+            st.rerun()
+
 # -----------------------------------------------------------------------------
 # ESTILIZAÇÃO CSS PERSONALIZADA (FRIONLINE - ORANGE TECH THEME)
 # -----------------------------------------------------------------------------
@@ -430,7 +456,6 @@ else:
                     data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
                 ).first()
                 
-                # Contagem otimizada direto na chave primária
                 agendadas_reais = db.query(Agendamento.id).filter(
                     Agendamento.data_agendamento == data_sel,
                     Agendamento.cidade == cidade_sel,
@@ -822,7 +847,6 @@ else:
                             data=dia_atual, cidade=cid_painel, tipo_servico=serv_painel, periodo=p
                         ).first()
                         
-                        # Contagem otimizada direto na chave primária
                         agendadas_reais = db.query(Agendamento.id).filter(
                             Agendamento.data_agendamento == dia_atual,
                             Agendamento.cidade == cid_painel,
@@ -1096,12 +1120,15 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 6: GESTÃO DE USUÁRIOS
+    # MÓDULO 6: GESTÃO DE USUÁRIOS (APENAS ADMIN)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "6. Gestão de Usuários":
         st.title("👤 Gestão de Usuários e Permissões")
         
-        tab_cad, tab_edit, tab_list = st.tabs(["➕ Cadastrar Usuário", "✏️ Editar Usuário", "📋 Usuários Cadastrados"])
+        if "msg_sucesso_usr" in st.session_state:
+            st.success(st.session_state.pop("msg_sucesso_usr"))
+        
+        tab_cad, tab_edit, tab_list = st.tabs(["➕ Cadastrar Usuário", "✏️ Editar / Excluir Usuário", "📋 Usuários Cadastrados"])
         
         PERFIS_DISPONIVEIS = ["suporte", "comercial", "gestor_logistica", "admin"]
         
@@ -1130,6 +1157,7 @@ else:
                                 )
                                 db.add(novo_u)
                                 db.commit()
+                                limpar_cache_geral()
                                 st.success(f"Usuário {nome_u} cadastrado com sucesso!")
                                 st.rerun()
                         finally:
@@ -1138,15 +1166,15 @@ else:
                         st.warning("Preencha todos os campos obrigatórios.")
                         
         with tab_edit:
-            st.subheader("Editar Cadastro / Alterar Setor do Colaborador")
+            st.subheader("Editar Cadastro ou Excluir Colaborador")
             db = get_db()
             try:
                 usuarios_db = db.query(Usuario).order_by(Usuario.nome).all()
                 if not usuarios_db:
                     st.info("Nenhum usuário cadastrado para edição.")
                 else:
-                    dict_usuarios = {f"{u.nome} ({u.email}) - Perfil Atual: {u.perfil.upper()}": u.id for u in usuarios_db}
-                    usr_selecionado_label = st.selectbox("Selecione o Usuário que deseja editar:", list(dict_usuarios.keys()))
+                    dict_usuarios = {f"{u.nome} ({u.email}) - Perfil: {u.perfil.upper()}": u.id for u in usuarios_db}
+                    usr_selecionado_label = st.selectbox("Selecione o Usuário que deseja gerenciar:", list(dict_usuarios.keys()))
                     usr_id = dict_usuarios[usr_selecionado_label]
                     
                     user_to_edit = db.query(Usuario).filter_by(id=usr_id).first()
@@ -1185,8 +1213,20 @@ else:
                                             user_to_edit.senha_hash = hash_senha(nova_senha_admin)
                                             
                                         db.commit()
-                                        st.success(f"Cadastro de {user_to_edit.nome} atualizado com sucesso!")
+                                        limpar_cache_geral()
+                                        st.session_state["msg_sucesso_usr"] = f"Cadastro de {user_to_edit.nome} atualizado com sucesso!"
                                         st.rerun()
+                        
+                        # ZONA DE PERIGO: BOTÃO DE EXCLUSÃO (APENAS ADMIN)
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.markdown("---")
+                        st.markdown("#### 🚨 Zona de Perigo")
+                        
+                        if user_to_edit.id == usr["id"]:
+                            st.info("ℹ️ Você está logado com esta conta no momento. Não é possível excluir o seu próprio usuário logado.")
+                        else:
+                            if st.button(f"🗑️ Excluir Usuário: {user_to_edit.nome}", use_container_width=True):
+                                modal_confirmar_exclusao_usuario(user_to_edit.id, user_to_edit.nome, user_to_edit.email)
             finally:
                 db.close()
                 
@@ -1250,7 +1290,7 @@ else:
                                 else:
                                     user_db.senha_hash = hash_senha(nova_senha_clean)
                                     db.commit()
-                                    
+                                    limpar_cache_geral()
                                     st.success("🎉 Senha alterada com sucesso! Utilize sua nova senha no próximo login.")
                         except Exception as e:
                             db.rollback()
