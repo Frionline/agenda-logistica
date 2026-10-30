@@ -28,7 +28,7 @@ criar_admin_padrao()
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=30)
 def consultar_bloqueio_cached():
-    """Consulta com cache de 30s para evitar requisições repetidas ao banco Neon."""
+    """Consulta com cache de 30s para evitar requisições repetidas ao banco."""
     db = get_db()
     try:
         bloqueio = db.query(BloqueioAgenda).filter_by(ativo=True).first()
@@ -387,9 +387,9 @@ else:
     menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
 
     # -------------------------------------------------------------------------
-    # MÓDULO 1: GESTÃO DE VAGAS + CADEADO DE BLOQUEIO DINÂMICO (AUTO-SAVE)
+    # MÓDULO 1: GESTÃO DE VAGAS + CADEADO DE BLOQUEIO DINÂMICO (AUTO-SAVE ENTER)
     # -------------------------------------------------------------------------
-    elif menu_selecionado == "1. Gestão de Vagas (Logística)":
+    if menu_selecionado == "1. Gestão de Vagas (Logística)":
         st.title("📅 Gestão de Disponibilidade de Vagas")
         
         st.markdown("### 🔒 Bloqueio de Agendamento por Período (Cadeado Global)")
@@ -397,7 +397,6 @@ else:
         try:
             bloqueio_atual = db.query(BloqueioAgenda).filter_by(ativo=True).first()
             
-            # Função disparada automaticamente ao apertar ENTER nas datas
             def salvar_bloqueio_automatico():
                 db_cb = get_db()
                 try:
