@@ -18,10 +18,11 @@ st.set_page_config(
 # Inicializa o banco e registra os modelos no ORM via cache do Streamlit
 init_db()
 
-from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda
-from auth import autenticar_usuario, criar_admin_padrao, hash_senha
+from models import Usuario, DisponibilidadeVaga, Agendamento, ProtocoloPendente, BloqueioAgenda, PerfilPermissao
+from auth import autenticar_usuario, criar_admin_padrao, hash_senha, inicializar_permissoes_padrao, MODULOS_SISTEMA
 
 criar_admin_padrao()
+inicializar_permissoes_padrao()
 
 # -----------------------------------------------------------------------------
 # HELPER DE CACHE E OTIMIZAÇÃO DE PERFORMANCE
@@ -46,6 +47,22 @@ def verificar_data_bloqueada(data_verificar):
     if ativo and dt_ini and dt_fim:
         return dt_ini <= data_verificar <= dt_fim
     return False
+
+@st.cache_data(ttl=30)
+def carregar_permissoes_perfil(perfil_usuario):
+    """Retorna a lista de módulos permitidos para determinado perfil."""
+    db = get_db()
+    try:
+        registros = db.query(PerfilPermissao).filter_by(perfil=perfil_usuario, permitido=True).all()
+        chaves_permitidas = [r.modulo_chave for r in registros]
+        
+        modulos_autorizados = [
+            nome_menu for chave, nome_menu in MODULOS_SISTEMA.items()
+            if chave in chaves_permitidas
+        ]
+        return modulos_autorizados
+    finally:
+        db.close()
 
 def limpar_cache_geral():
     """Força a limpeza do cache de dados quando qualquer alteração é gravada no banco."""
@@ -365,20 +382,15 @@ else:
         
     st.sidebar.markdown("---")
     
-    opcoes_menu = []
-    if usr["perfil"] in ["admin", "gestor_logistica"]:
-        opcoes_menu.append("1. Gestão de Vagas (Logística)")
-    if usr["perfil"] in ["admin", "suporte", "comercial"]:
-        opcoes_menu.append("2. Agendamento Manual (Suporte/Comercial)")
-    if usr["perfil"] in ["admin", "gestor_logistica", "suporte", "comercial"]:
-        opcoes_menu.append("3. 📌 Central de Pendências de Agendamento")
-    if usr["perfil"] in ["admin", "gestor_logistica", "suporte", "comercial"]:
-        opcoes_menu.append("4. Painel de Agenda (3 Dias)")
-    if usr["perfil"] in ["admin", "gestor_logistica"]:
-        opcoes_menu.append("5. Importação de Excel (.xlsx / .xls)")
-    if usr["perfil"] == "admin":
-        opcoes_menu.append("6. Gestão de Usuários")
+    # -------------------------------------------------------------------------
+    # MONTAGEM DINÂMICA DO MENU COM BASE NAS PERMISSÕES DO BANCO
+    # -------------------------------------------------------------------------
+    opcoes_menu = carregar_permissoes_perfil(usr["perfil"])
     
+    # Admin sempre tem o Módulo 6 garantido
+    if usr["perfil"] == "admin" and "6. Gestão de Usuários" not in opcoes_menu:
+        opcoes_menu.append("6. Gestão de Usuários")
+        
     opcoes_menu.append("🔑 Alterar Minha Senha")
 
     if "menu_navegacao" in st.session_state and st.session_state["menu_navegacao"] not in opcoes_menu:
@@ -1166,7 +1178,7 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 6: GESTÃO DE USUÁRIOS (APENAS ADMIN)
+    # MÓDULO 6: GESTÃO DE USUÁRIOS E PERMISSÕES (APENAS ADMIN)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "6. Gestão de Usuários":
         st.title("👤 Gestão de Usuários e Permissões")
@@ -1174,7 +1186,12 @@ else:
         if "msg_sucesso_usr" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_usr"))
         
-        tab_cad, tab_edit, tab_list = st.tabs(["➕ Cadastrar Usuário", "✏️ Editar / Excluir Usuário", "📋 Usuários Cadastrados"])
+        tab_cad, tab_edit, tab_list, tab_perm = st.tabs([
+            "➕ Cadastrar Usuário", 
+            "✏️ Editar / Excluir Usuário", 
+            "📋 Usuários Cadastrados",
+            "🔐 Matriz de Permissões por Perfil"
+        ])
         
         PERFIS_DISPONIVEIS = ["suporte", "comercial", "gestor_logistica", "admin"]
         
@@ -1291,6 +1308,60 @@ else:
                             "Status": "🟢 Ativo" if u.ativo else "🔴 Inativo"
                         })
                     st.dataframe(pd.DataFrame(dados_u), use_container_width=True, hide_index=True)
+            finally:
+                db.close()
+
+        with tab_perm:
+            st.subheader("⚙️ Configurar Acessos e Permissões dos Perfis")
+            st.caption("Marque ou desmarque os módulos aos quais cada perfil terá acesso e clique em Salvar.")
+            
+            db = get_db()
+            try:
+                perfis_gerenciados = ["suporte", "comercial", "gestor_logistica"]
+                
+                with st.form("form_matriz_permissoes"):
+                    for perf in perfis_gerenciados:
+                        st.markdown(f"#### 🎭 Perfil: **{perf.upper().replace('_', ' ')}**")
+                        cols = st.columns(3)
+                        
+                        for idx, (chave_mod, nome_mod) in enumerate(MODULOS_SISTEMA.items()):
+                            if chave_mod == "mod_6":
+                                continue
+                                
+                            reg_perm = db.query(PerfilPermissao).filter_by(perfil=perf, modulo_chave=chave_mod).first()
+                            valor_inicial = reg_perm.permitido if reg_perm else False
+                            
+                            col_atual = cols[idx % 3]
+                            with col_atual:
+                                st.checkbox(
+                                    label=nome_mod,
+                                    value=valor_inicial,
+                                    key=f"chk_{perf}_{chave_mod}"
+                                )
+                        st.markdown("---")
+                    
+                    btn_salvar_perm = st.form_submit_button("💾 Salvar Matriz de Permissões", type="primary", use_container_width=True)
+                    
+                    if btn_salvar_perm:
+                        for perf in perfis_gerenciados:
+                            for chave_mod in MODULOS_SISTEMA.keys():
+                                if chave_mod == "mod_6":
+                                    continue
+                                
+                                key_chk = f"chk_{perf}_{chave_mod}"
+                                novo_status = st.session_state.get(key_chk, False)
+                                
+                                reg = db.query(PerfilPermissao).filter_by(perfil=perf, modulo_chave=chave_mod).first()
+                                if reg:
+                                    reg.permitido = novo_status
+                                else:
+                                    novo_reg = PerfilPermissao(perfil=perf, modulo_chave=chave_mod, permitido=novo_status)
+                                    db.add(novo_reg)
+                        
+                        db.commit()
+                        limpar_cache_geral()
+                        st.session_state["msg_sucesso_usr"] = "🎉 Permissões de perfil atualizadas com sucesso! As alterações já estão valendo."
+                        st.rerun()
             finally:
                 db.close()
 
