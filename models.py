@@ -71,3 +71,15 @@ class BloqueioAgenda(Base):
     data_fim = Column(Date, nullable=False)
     ativo = Column(Boolean, default=True)
     criado_por = Column(String(100), nullable=True)
+from database import Base
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from datetime import datetime
+
+class PerfilPermissao(Base):
+    __tablename__ = "perfis_permissoes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    perfil = Column(String, nullable=False, index=True) # ex: suporte, comercial, gestor_logistica, admin
+    modulo_chave = Column(String, nullable=False)        # ex: mod_1, mod_2, mod_3, etc.
+    permitido = Column(Boolean, default=True)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
