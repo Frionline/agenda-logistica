@@ -546,11 +546,11 @@ else:
     elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
         st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
         
+        if st.session_state.pop("limpar_proto_flag", False):
+            st.session_state["input_proto_manual"] = ""
+
         if "msg_sucesso_manual" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_manual"))
-            
-        def limpar_campo_protocolo():
-            st.session_state["input_proto_manual"] = ""
 
         if "input_proto_manual" not in st.session_state:
             st.session_state["input_proto_manual"] = ""
@@ -698,7 +698,7 @@ else:
 
                                 db.commit()
                                 limpar_cache_geral()
-                                limpar_campo_protocolo()
+                                st.session_state["limpar_proto_flag"] = True
                                 st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
                                 st.rerun()
         finally:
