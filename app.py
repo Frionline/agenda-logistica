@@ -79,15 +79,16 @@ def modal_confirmar_limpeza_pendentes(db):
     col_modal1, col_modal2 = st.columns(2)
     with col_modal1:
         if st.button("Sim, apagar tudo", type="primary", use_container_width=True):
-            try:
-                db.query(ProtocoloPendente).delete()
-                db.commit()
-                limpar_cache_geral()
-                st.session_state["msg_sucesso_del"] = "Lista de pendentes zerada com sucesso!"
-                st.rerun()
-            except Exception as e:
-                db.rollback()
-                st.error(f"Erro ao apagar pendentes: {e}")
+            with st.spinner("Apagando lista de pendentes..."):
+                try:
+                    db.query(ProtocoloPendente).delete()
+                    db.commit()
+                    limpar_cache_geral()
+                    st.session_state["msg_sucesso_del"] = "Lista de pendentes zerada com sucesso!"
+                    st.rerun()
+                except Exception as e:
+                    db.rollback()
+                    st.error(f"Erro ao apagar pendentes: {e}")
     with col_modal2:
         if st.button("Cancelar", use_container_width=True):
             st.rerun()
@@ -100,17 +101,18 @@ def modal_confirmar_exclusao_usuario(db, user_id, nome_user, email_user):
     col_m1, col_m2 = st.columns(2)
     with col_m1:
         if st.button("Sim, apagar usuário", type="primary", use_container_width=True):
-            try:
-                usr_del = db.query(Usuario).filter_by(id=user_id).first()
-                if usr_del:
-                    db.delete(usr_del)
-                    db.commit()
-                    limpar_cache_geral()
-                    st.session_state["msg_sucesso_usr"] = f"Usuário {nome_user} excluído com sucesso!"
-                    st.rerun()
-            except Exception as e:
-                db.rollback()
-                st.error(f"Erro ao excluir usuário: {e}")
+            with st.spinner(f"Excluindo usuário {nome_user}..."):
+                try:
+                    usr_del = db.query(Usuario).filter_by(id=user_id).first()
+                    if usr_del:
+                        db.delete(usr_del)
+                        db.commit()
+                        limpar_cache_geral()
+                        st.session_state["msg_sucesso_usr"] = f"Usuário {nome_user} excluído com sucesso!"
+                        st.rerun()
+                except Exception as e:
+                    db.rollback()
+                    st.error(f"Erro ao excluir usuário: {e}")
     with col_m2:
         if st.button("Cancelar", use_container_width=True):
             st.rerun()
@@ -292,7 +294,7 @@ def fazer_logout():
     st.rerun()
 
 # -----------------------------------------------------------------------------
-# EXECUÇÃO PRINCIPAL DO APP COM CONEXÃO REAPROVEITADA (GET_DB GLOBAL)
+# EXECUÇÃO PRINCIPAL DO APP COM CONEXÃO REAPROVEITADA
 # -----------------------------------------------------------------------------
 db = get_db()
 
@@ -352,13 +354,14 @@ try:
                 btn_entrar = st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True)
                 
                 if btn_entrar:
-                    usr = autenticar_usuario(email, senha)
-                    if usr:
-                        st.session_state.usuario = usr
-                        st.success(f"Bem-vindo(a), {usr['nome']}!")
-                        st.rerun()
-                    else:
-                        st.error("E-mail ou senha incorretos (ou usuário inativo).")
+                    with st.spinner("Autenticando usuário..."):
+                        usr = autenticar_usuario(email, senha)
+                        if usr:
+                            st.session_state.usuario = usr
+                            st.success(f"Bem-vindo(a), {usr['nome']}!")
+                            st.rerun()
+                        else:
+                            st.error("E-mail ou senha incorretos (ou usuário inativo).")
 
     else:
         usr = st.session_state.usuario
@@ -447,24 +450,26 @@ try:
                 if bloqueio_atual:
                     btn_liberar_bloqueio = st.button("🔓 Liberar Agenda (Abrir Cadeado)", use_container_width=True)
                     if btn_liberar_bloqueio:
-                        bloqueio_atual.ativo = False
-                        db.commit()
-                        limpar_cache_geral()
-                        st.success("🔓 Período liberado para agendamentos com sucesso!")
-                        st.rerun()
+                        with st.spinner("Liberando agenda..."):
+                            bloqueio_atual.ativo = False
+                            db.commit()
+                            limpar_cache_geral()
+                            st.success("🔓 Período liberado para agendamentos com sucesso!")
+                            st.rerun()
                 else:
                     if st.button("🔒 Bloquear Período (Fechar Cadeado)", type="primary", use_container_width=True):
-                        novo_b = BloqueioAgenda(
-                            data_inicio=dt_ini_b,
-                            data_fim=dt_fim_b,
-                            ativo=True,
-                            criado_por=usr["nome"]
-                        )
-                        db.add(novo_b)
-                        db.commit()
-                        limpar_cache_geral()
-                        st.warning(f"🔒 Agendamentos bloqueados do dia {dt_ini_b.strftime('%d/%m/%Y')} até {dt_fim_b.strftime('%d/%m/%Y')}!")
-                        st.rerun()
+                        with st.spinner("Bloqueando período..."):
+                            novo_b = BloqueioAgenda(
+                                data_inicio=dt_ini_b,
+                                data_fim=dt_fim_b,
+                                ativo=True,
+                                criado_por=usr["nome"]
+                            )
+                            db.add(novo_b)
+                            db.commit()
+                            limpar_cache_geral()
+                            st.warning(f"🔒 Agendamentos bloqueados do dia {dt_ini_b.strftime('%d/%m/%Y')} até {dt_fim_b.strftime('%d/%m/%Y')}!")
+                            st.rerun()
             
             if bloqueio_atual:
                 st.error(f"⚠️ **CADEADO FECHADO:** Agendamentos bloqueados para todas as O.S. entre **{bloqueio_atual.data_inicio.strftime('%d/%m/%Y')}** e **{bloqueio_atual.data_fim.strftime('%d/%m/%Y')}**.")
@@ -514,7 +519,7 @@ try:
                     vagas_input[p] = st.number_input(f"Total Vagas - {p}", min_value=agendadas_reais, value=max(v_atual, agendadas_reais), step=1)
 
             if st.button("Salvar Disponibilidade", type="primary"):
-                with st.spinner("Atualizando vagas..."):
+                with st.spinner("Salvando disponibilidade de vagas..."):
                     for p, qtd in vagas_input.items():
                         registro = registros_vagas.get(p)
                         if registro:
@@ -657,46 +662,47 @@ try:
                             elif bloqueado_agora:
                                 st.error("🔒 Não é possível agendar em datas bloqueadas pelo Cadeado.")
                             else:
-                                if eh_reagendamento and agendamento_existente:
-                                    agendamento_existente.cidade = cidade_valida
-                                    agendamento_existente.tipo_servico = servico_valido
-                                    agendamento_existente.data_agendamento = data_escolhida
-                                    agendamento_existente.periodo = periodo_escolhido
-                                    agendamento_existente.observacoes = obs
-                                    agendamento_existente.status = "Reagendado"
-                                    agendamento_existente.agendado_por = usr["nome"]
-                                else:
-                                    novo_ag = Agendamento(
-                                        cliente_id=cliente_id,
-                                        cidade=cidade_valida,
-                                        tipo_servico=servico_valido,
-                                        data_agendamento=data_escolhida,
-                                        periodo=periodo_escolhido,
-                                        observacoes=obs,
-                                        status="Agendado",
-                                        agendado_por=usr["nome"],
-                                        criador_excel=dados_pendente.criador_excel if (dados_pendente and getattr(dados_pendente, 'criador_excel', None)) else None,
-                                        nome_cliente=dados_pendente.nome_cliente if dados_pendente else None,
-                                        rua=dados_pendente.rua if dados_pendente else None,
-                                        bairro=dados_pendente.bairro if dados_pendente else None,
-                                        categoria_4=dados_pendente.categoria_4 if dados_pendente else None,
-                                        dados_completos=True if dados_pendente else False
-                                    )
-                                    db.add(novo_ag)
-                                    
-                                if dados_pendente:
-                                    dados_pendente.status = "Agendado"
+                                with st.spinner("Gravando agendamento..."):
+                                    if eh_reagendamento and agendamento_existente:
+                                        agendamento_existente.cidade = cidade_valida
+                                        agendamento_existente.tipo_servico = servico_valido
+                                        agendamento_existente.data_agendamento = data_escolhida
+                                        agendamento_existente.periodo = periodo_escolhido
+                                        agendamento_existente.observacoes = obs
+                                        agendamento_existente.status = "Reagendado"
+                                        agendamento_existente.agendado_por = usr["nome"]
+                                    else:
+                                        novo_ag = Agendamento(
+                                            cliente_id=cliente_id,
+                                            cidade=cidade_valida,
+                                            tipo_servico=servico_valido,
+                                            data_agendamento=data_escolhida,
+                                            periodo=periodo_escolhido,
+                                            observacoes=obs,
+                                            status="Agendado",
+                                            agendado_por=usr["nome"],
+                                            criador_excel=dados_pendente.criador_excel if (dados_pendente and getattr(dados_pendente, 'criador_excel', None)) else None,
+                                            nome_cliente=dados_pendente.nome_cliente if dados_pendente else None,
+                                            rua=dados_pendente.rua if dados_pendente else None,
+                                            bairro=dados_pendente.bairro if dados_pendente else None,
+                                            categoria_4=dados_pendente.categoria_4 if dados_pendente else None,
+                                            dados_completos=True if dados_pendente else False
+                                        )
+                                        db.add(novo_ag)
+                                        
+                                    if dados_pendente:
+                                        dados_pendente.status = "Agendado"
 
-                                db.commit()
-                                limpar_cache_geral()
-                                st.session_state["limpar_proto_flag"] = True
-                                st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
-                                st.rerun()
+                                    db.commit()
+                                    limpar_cache_geral()
+                                    st.session_state["limpar_proto_flag"] = True
+                                    st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
+                                    st.rerun()
 
         # -------------------------------------------------------------------------
-        # MÓDULO 3: CENTRAL DE PENDÊNCIAS (COM BUSCA EM TEMPO REAL E LIMITE 100)
+        # MÓDULO 3: CENTRAL DE PENDÊNCIAS (FILTRO BUSCA RÁPIDA + SPINNER)
         # -------------------------------------------------------------------------
-        elif menu_selecionado == "3. 📌 Central de Protocolos Pendentes de Agendamento":
+        elif menu_selecionado == "3. 📌 Central de Pendências de Agendamento":
             st.title("📌 Central de Protocolos Pendentes de Agendamento")
             st.caption("Protocolos importados do Excel que ainda não possuem data/período agendados no sistema.")
             
@@ -709,14 +715,19 @@ try:
             
             total_geral_pendentes = query_pendentes.count()
             
-            # 🔍 Filtro de Busca Instantânea para não travar a tela
-            filtro_busca = st.text_input("🔍 Filtrar Pendências (Digite o Protocolo ou Nome do Cliente):", placeholder="Ex: 123456 ou Maria")
+            # 🔍 Filtro e Busca Rápida acima da tabela
+            filtro_busca = st.text_input(
+                "🔍 Busca Rápida de O.S. Pendente",
+                placeholder="Digite o Protocolo, ID Cliente, ID Contrato ou Nome do Cliente..."
+            )
             
             if filtro_busca:
                 term = f"%{filtro_busca.strip()}%"
                 query_pendentes = query_pendentes.filter(
                     or_(
                         ProtocoloPendente.protocolo.ilike(term),
+                        ProtocoloPendente.id_cliente.ilike(term),
+                        ProtocoloPendente.id_contrato.ilike(term),
                         ProtocoloPendente.nome_cliente.ilike(term)
                     )
                 )
@@ -724,13 +735,13 @@ try:
             pendentes = query_pendentes.limit(100).all()
             
             if not pendentes:
-                st.info("ℹ️ Nenhum protocolo pendente localizado com o filtro digitado.")
+                st.info("ℹ️ Nenhum protocolo pendente encontrado com o termo digitado.")
             else:
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Total de O.S. Pendentes", f"{total_geral_pendentes} O.S.")
+                m1.metric("Total de Pendências", f"{total_geral_pendentes} O.S.")
                 
                 cidades_p = set([p.cidade for p in pendentes if p.cidade])
-                m2.metric("Cidades no Filtro", f"{len(cidades_p)} cidades")
+                m2.metric("Cidades Envolvidas", f"{len(cidades_p)} cidades")
                 
                 servicos_p = set([p.tipo_servico for p in pendentes if p.tipo_servico])
                 m3.metric("Tipos de Serviço", f"{len(servicos_p)} tipos")
@@ -842,38 +853,40 @@ try:
                     if verificar_data_bloqueada(data_sel):
                         st.error("🔒 Esta data está bloqueada pelo CADEADO logístico.")
                     else:
-                        novo_a = Agendamento(
-                            cliente_id=p_sel.protocolo,
-                            id_cliente=p_sel.id_cliente,
-                            id_contrato=p_sel.id_contrato,
-                            cidade=cidade_confirm,
-                            tipo_servico=servico_confirm,
-                            data_agendamento=data_sel,
-                            periodo=periodo_sel,
-                            observacoes=obs_sel,
-                            status="Agendado",
-                            agendado_por=usr["nome"],
-                            criador_excel=p_sel.criador_excel,
-                            nome_cliente=p_sel.nome_cliente,
-                            rua=p_sel.rua,
-                            bairro=p_sel.bairro,
-                            categoria_4=p_sel.categoria_4,
-                            dados_completos=True
-                        )
-                        db.add(novo_a)
-                        p_sel.status = "Agendado"
-                        db.commit()
-                        limpar_cache_geral()
-                        st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
-                        st.rerun()
+                        with st.spinner("Agendando protocolo..."):
+                            novo_a = Agendamento(
+                                cliente_id=p_sel.protocolo,
+                                id_cliente=p_sel.id_cliente,
+                                id_contrato=p_sel.id_contrato,
+                                cidade=cidade_confirm,
+                                tipo_servico=servico_confirm,
+                                data_agendamento=data_sel,
+                                periodo=periodo_sel,
+                                observacoes=obs_sel,
+                                status="Agendado",
+                                agendado_por=usr["nome"],
+                                criador_excel=p_sel.criador_excel,
+                                nome_cliente=p_sel.nome_cliente,
+                                rua=p_sel.rua,
+                                bairro=p_sel.bairro,
+                                categoria_4=p_sel.categoria_4,
+                                dados_completos=True
+                            )
+                            db.add(novo_a)
+                            p_sel.status = "Agendado"
+                            db.commit()
+                            limpar_cache_geral()
+                            st.session_state["msg_sucesso_pendente"] = f"✅ Protocolo {p_sel.protocolo} ({p_sel.nome_cliente or 'Cliente'}) agendado com sucesso para {data_sel.strftime('%d/%m/%Y')} ({periodo_sel})!"
+                            st.rerun()
 
                 if btn_excluir_os:
-                    proto_removido = p_sel.protocolo
-                    db.delete(p_sel)
-                    db.commit()
-                    limpar_cache_geral()
-                    st.session_state["msg_sucesso_pendente"] = f"🗑️ A O.S. de Protocolo {proto_removido} foi excluída com sucesso das Pendências!"
-                    st.rerun()
+                    with st.spinner("Excluindo O.S. pendente..."):
+                        proto_removido = p_sel.protocolo
+                        db.delete(p_sel)
+                        db.commit()
+                        limpar_cache_geral()
+                        st.session_state["msg_sucesso_pendente"] = f"🗑️ A O.S. de Protocolo {proto_removido} foi excluída com sucesso das Pendências!"
+                        st.rerun()
 
         # -------------------------------------------------------------------------
         # MÓDULO 4: PAINEL DE AGENDA
@@ -1029,7 +1042,7 @@ try:
                     if not arquivo_excel:
                         st.warning("⚠️ Por favor, selecione e faça o upload de um arquivo Excel acima primeiro.")
                     else:
-                        with st.spinner("Lendo e processando planilha..."):
+                        with st.spinner("Processando planilha e atualizando banco de dados..."):
                             df = pd.read_excel(arquivo_excel, dtype=str)
                             st.write("Visualização da Planilha Enviada:", df.head())
                             
@@ -1172,11 +1185,12 @@ try:
                     
                     if st.button(f"🗑️ Apagar Agendamentos do dia {data_del.strftime('%d/%m/%Y')}", use_container_width=True):
                         if total_ag_data > 0:
-                            db.query(Agendamento).filter_by(data_agendamento=data_del).delete()
-                            db.commit()
-                            limpar_cache_geral()
-                            st.session_state["msg_sucesso_del"] = f"Agendamentos do dia {data_del.strftime('%d/%m/%Y')} apagados com sucesso!"
-                            st.rerun()
+                            with st.spinner(f"Apagando agendamentos do dia {data_del.strftime('%d/%m/%Y')}..."):
+                                db.query(Agendamento).filter_by(data_agendamento=data_del).delete()
+                                db.commit()
+                                limpar_cache_geral()
+                                st.session_state["msg_sucesso_del"] = f"Agendamentos do dia {data_del.strftime('%d/%m/%Y')} apagados com sucesso!"
+                                st.rerun()
                         else:
                             st.info("Nenhum registro encontrado para apagar nesta data.")
 
@@ -1208,22 +1222,23 @@ try:
                     
                     if st.form_submit_button("Cadastrar Usuário", type="primary"):
                         if nome_u and email_u and senha_u:
-                            existe = db.query(Usuario).filter_by(email=email_u.strip().lower()).first()
-                            if existe:
-                                st.error("Este e-mail já está cadastrado!")
-                            else:
-                                novo_u = Usuario(
-                                    nome=nome_u,
-                                    email=email_u.strip().lower(),
-                                    senha_hash=hash_senha(senha_u),
-                                    perfil=perfil_u,
-                                    ativo=True
-                                )
-                                db.add(novo_u)
-                                db.commit()
-                                limpar_cache_geral()
-                                st.success(f"Usuário {nome_u} cadastrado com sucesso!")
-                                st.rerun()
+                            with st.spinner("Cadastrando novo colaborador..."):
+                                existe = db.query(Usuario).filter_by(email=email_u.strip().lower()).first()
+                                if existe:
+                                    st.error("Este e-mail já está cadastrado!")
+                                else:
+                                    novo_u = Usuario(
+                                        nome=nome_u,
+                                        email=email_u.strip().lower(),
+                                        senha_hash=hash_senha(senha_u),
+                                        perfil=perfil_u,
+                                        ativo=True
+                                    )
+                                    db.add(novo_u)
+                                    db.commit()
+                                    limpar_cache_geral()
+                                    st.success(f"Usuário {nome_u} cadastrado com sucesso!")
+                                    st.rerun()
                         else:
                             st.warning("Preencha todos os campos obrigatórios.")
                             
@@ -1260,22 +1275,23 @@ try:
                                 if not novo_nome or not novo_email:
                                     st.error("Nome e E-mail não podem ficar em branco.")
                                 else:
-                                    email_check = db.query(Usuario).filter(Usuario.email == novo_email.strip().lower(), Usuario.id != user_to_edit.id).first()
-                                    if email_check:
-                                        st.error("Este e-mail já pertence a outro usuário cadastrado.")
-                                    else:
-                                        user_to_edit.nome = novo_nome.strip()
-                                        user_to_edit.email = novo_email.strip().lower()
-                                        user_to_edit.perfil = novo_perfil
-                                        user_to_edit.ativo = True if novo_status == "Ativo" else False
-                                        
-                                        if nova_senha_admin:
-                                            user_to_edit.senha_hash = hash_senha(nova_senha_admin)
+                                    with st.spinner("Atualizando dados do usuário..."):
+                                        email_check = db.query(Usuario).filter(Usuario.email == novo_email.strip().lower(), Usuario.id != user_to_edit.id).first()
+                                        if email_check:
+                                            st.error("Este e-mail já pertence a outro usuário cadastrado.")
+                                        else:
+                                            user_to_edit.nome = novo_nome.strip()
+                                            user_to_edit.email = novo_email.strip().lower()
+                                            user_to_edit.perfil = novo_perfil
+                                            user_to_edit.ativo = True if novo_status == "Ativo" else False
                                             
-                                        db.commit()
-                                        limpar_cache_geral()
-                                        st.session_state["msg_sucesso_usr"] = f"Cadastro de {user_to_edit.nome} atualizado com sucesso!"
-                                        st.rerun()
+                                            if nova_senha_admin:
+                                                user_to_edit.senha_hash = hash_senha(nova_senha_admin)
+                                                
+                                            db.commit()
+                                            limpar_cache_geral()
+                                            st.session_state["msg_sucesso_usr"] = f"Cadastro de {user_to_edit.nome} atualizado com sucesso!"
+                                            st.rerun()
                         
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.markdown("---")
@@ -1330,25 +1346,26 @@ try:
                     btn_salvar_perm = st.form_submit_button("💾 Salvar Matriz de Permissões", type="primary", use_container_width=True)
                     
                     if btn_salvar_perm:
-                        for perf in perfis_gerenciados:
-                            for chave_mod in MODULOS_SISTEMA.keys():
-                                if chave_mod == "mod_6":
-                                    continue
-                                
-                                key_chk = f"chk_{perf}_{chave_mod}"
-                                novo_status = st.session_state.get(key_chk, False)
-                                
-                                reg = db.query(PerfilPermissao).filter_by(perfil=perf, modulo_chave=chave_mod).first()
-                                if reg:
-                                    reg.permitido = novo_status
-                                else:
-                                    novo_reg = PerfilPermissao(perfil=perf, modulo_chave=chave_mod, permitido=novo_status)
-                                    db.add(novo_reg)
-                        
-                        db.commit()
-                        limpar_cache_geral()
-                        st.session_state["msg_sucesso_usr"] = "🎉 Permissões de perfil atualizadas com sucesso! As alterações já estão valendo."
-                        st.rerun()
+                        with st.spinner("Salvando matriz de permissões..."):
+                            for perf in perfis_gerenciados:
+                                for chave_mod in MODULOS_SISTEMA.keys():
+                                    if chave_mod == "mod_6":
+                                        continue
+                                    
+                                    key_chk = f"chk_{perf}_{chave_mod}"
+                                    novo_status = st.session_state.get(key_chk, False)
+                                    
+                                    reg = db.query(PerfilPermissao).filter_by(perfil=perf, modulo_chave=chave_mod).first()
+                                    if reg:
+                                        reg.permitido = novo_status
+                                    else:
+                                        novo_reg = PerfilPermissao(perfil=perf, modulo_chave=chave_mod, permitido=novo_status)
+                                        db.add(novo_reg)
+                            
+                            db.commit()
+                            limpar_cache_geral()
+                            st.session_state["msg_sucesso_usr"] = "🎉 Permissões de perfil atualizadas com sucesso! As alterações já estão valendo."
+                            st.rerun()
 
         # -------------------------------------------------------------------------
         # MÓDULO 7: ALTERAR MINHA SENHA
@@ -1378,22 +1395,23 @@ try:
                         elif len(nova_senha_clean) < 6:
                             st.error("Por motivos de segurança, a nova senha deve ter no mínimo 6 caracteres.")
                         else:
-                            try:
-                                user_db = db.query(Usuario).filter_by(id=usr["id"]).first()
-                                if not user_db:
-                                    st.error("Usuário não localizado no banco de dados.")
-                                else:
-                                    hash_atual_informada = hash_senha(senha_atual_clean)
-                                    
-                                    if user_db.senha_hash != hash_atual_informada:
-                                        st.error("A 'Senha Atual' informada está incorreta.")
+                            with st.spinner("Atualizando sua senha..."):
+                                try:
+                                    user_db = db.query(Usuario).filter_by(id=usr["id"]).first()
+                                    if not user_db:
+                                        st.error("Usuário não localizado no banco de dados.")
                                     else:
-                                        user_db.senha_hash = hash_senha(nova_senha_clean)
-                                        db.commit()
-                                        limpar_cache_geral()
-                                        st.success("🎉 Senha alterada com sucesso! Utilize sua nova senha no próximo login.")
-                            except Exception as e:
-                                db.rollback()
-                                st.error(f"Erro ao atualizar senha no banco de dados: {str(e)}")
+                                        hash_atual_informada = hash_senha(senha_atual_clean)
+                                        
+                                        if user_db.senha_hash != hash_atual_informada:
+                                            st.error("A 'Senha Atual' informada está incorreta.")
+                                        else:
+                                            user_db.senha_hash = hash_senha(nova_senha_clean)
+                                            db.commit()
+                                            limpar_cache_geral()
+                                            st.success("🎉 Senha alterada com sucesso! Utilize sua nova senha no próximo login.")
+                                except Exception as e:
+                                    db.rollback()
+                                    st.error(f"Erro ao atualizar senha no banco de dados: {str(e)}")
 finally:
     db.close()
