@@ -502,18 +502,27 @@ else:
             col_m, col_l, col_t, col_n = st.columns(4)
             cols = [col_m, col_l, col_t, col_n]
             
+            # OTIMIZAÇÃO: Consulta em lote das vagas e agendamentos para a data/cidade/serviço
+            registros_vagas = {
+                v.periodo: v for v in db.query(DisponibilidadeVaga).filter_by(
+                    data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel
+                ).all()
+            }
+            
+            agendamentos_qtd = {
+                p: 0 for p in periodos
+            }
+            counts = db.query(Agendamento.periodo, pd.func.count(Agendamento.id)).filter(
+                Agendamento.data_agendamento == data_sel,
+                Agendamento.cidade == cidade_sel,
+                Agendamento.tipo_servico == servico_sel
+            ).group_by(Agendamento.periodo).all()
+            for p_nome, count_val in counts:
+                agendamentos_qtd[p_nome] = count_val
+
             for i, p in enumerate(periodos):
-                registro = db.query(DisponibilidadeVaga).filter_by(
-                    data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
-                ).first()
-                
-                agendadas_reais = db.query(Agendamento.id).filter(
-                    Agendamento.data_agendamento == data_sel,
-                    Agendamento.cidade == cidade_sel,
-                    Agendamento.tipo_servico == servico_sel,
-                    Agendamento.periodo == p
-                ).count()
-                
+                registro = registros_vagas.get(p)
+                agendadas_reais = agendamentos_qtd.get(p, 0)
                 v_atual = registro.vagas_totais if registro else 0
                 
                 with cols[i]:
@@ -522,10 +531,7 @@ else:
 
             if st.button("Salvar Disponibilidade", type="primary"):
                 for p, qtd in vagas_input.items():
-                    registro = db.query(DisponibilidadeVaga).filter_by(
-                        data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel, periodo=p
-                    ).first()
-                    
+                    registro = registros_vagas.get(p)
                     if registro:
                         registro.vagas_totais = qtd
                     else:
@@ -573,9 +579,7 @@ else:
                     )
                 ).all()
                 
-                agendamento_existente = None
-                if todos_ag:
-                    agendamento_existente = todos_ag[-1]
+                agendamento_existente = todos_ag[-1] if todos_ag else None
                 
                 dados_pendente = db.query(ProtocoloPendente).filter(
                     (ProtocoloPendente.protocolo == cliente_id) |
@@ -606,29 +610,40 @@ else:
                 if not cidade_valida or not servico_valido:
                     st.info("👆 Selecione a **Cidade do Atendimento** e o **Tipo de Serviço** para carregar as datas e vagas disponíveis.")
                 else:
+                    # Restringe visualização de vagas para 60 dias a partir de hoje
                     vagas_cadastradas = db.query(DisponibilidadeVaga).filter(
                         DisponibilidadeVaga.cidade == cidade_valida,
                         DisponibilidadeVaga.tipo_servico == servico_valido,
-                        DisponibilidadeVaga.data >= date.today()
+                        DisponibilidadeVaga.data >= date.today(),
+                        DisponibilidadeVaga.data <= date.today() + timedelta(days=60)
                     ).all()
                     
                     vagas_disponiveis = []
-                    for v in vagas_cadastradas:
-                        if verificar_data_bloqueada(v.data):
-                            continue
-
-                        agendadas = db.query(Agendamento.id).filter(
-                            Agendamento.data_agendamento == v.data,
+                    if vagas_cadastradas:
+                        # Busca agendamentos ocupados em uma única query
+                        datas_unicas = list(set([v.data for v in vagas_cadastradas]))
+                        agendamentos_existentes_list = db.query(Agendamento).filter(
                             Agendamento.cidade == cidade_valida,
                             Agendamento.tipo_servico == servico_valido,
-                            Agendamento.periodo == v.periodo
-                        ).count()
+                            Agendamento.data_agendamento.in_(datas_unicas)
+                        ).all()
                         
-                        if eh_reagendamento and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
-                            agendadas -= 1
+                        agendamentos_count_map = {}
+                        for a in agendamentos_existentes_list:
+                            chave = (a.data_agendamento, a.periodo)
+                            agendamentos_count_map[chave] = agendamentos_count_map.get(chave, 0) + 1
+
+                        for v in vagas_cadastradas:
+                            if verificar_data_bloqueada(v.data):
+                                continue
+
+                            agendadas = agendamentos_count_map.get((v.data, v.periodo), 0)
                             
-                        if (v.vagas_totais - agendadas) > 0:
-                            vagas_disponiveis.append(v)
+                            if eh_reagendamento and agendamento_existente.data_agendamento == v.data and agendamento_existente.periodo == v.periodo:
+                                agendadas -= 1
+                                
+                            if (v.vagas_totais - agendadas) > 0:
+                                vagas_disponiveis.append(v)
                     
                     if not vagas_disponiveis:
                         st.error("🔒 **AGENDA FECHADA / SEM VAGAS:** Não há vagas disponíveis para a cidade e serviço selecionados (ou o período está bloqueado pelo CADEADO logístico).")
@@ -642,10 +657,7 @@ else:
                             index=0
                         )
                         
-                        if data_escolhida is None:
-                            periodos_disponiveis = []
-                        else:
-                            periodos_disponiveis = [v.periodo for v in vagas_disponiveis if v.data == data_escolhida]
+                        periodos_disponiveis = [v.periodo for v in vagas_disponiveis if v.data == data_escolhida] if data_escolhida else []
                         
                         periodo_escolhido = st.selectbox(
                             "Selecione o Período *",
@@ -735,19 +747,17 @@ else:
                 st.markdown("---")
                 st.subheader("📋 Lista de Protocolos Aguardando Vaga")
                 
-                dados_p = []
-                for p in pendentes:
-                    dados_p.append({
-                        "Protocolo": p.protocolo,
-                        "ID Cliente": p.id_cliente or "-",
-                        "ID Contrato": p.id_contrato or "-",
-                        "Cliente": p.nome_cliente or "Sem nome",
-                        "Cidade/Região": p.cidade or "-",
-                        "Serviço": p.tipo_servico or "-",
-                        "Endereço": f"{p.rua or '-'}, {p.bairro or '-'}",
-                        "Criador (AK)": p.criador_excel or "-",
-                        "Data Ref. Excel": p.data_referencia.strftime('%d/%m/%Y') if p.data_referencia else "-"
-                    })
+                dados_p = [{
+                    "Protocolo": p.protocolo,
+                    "ID Cliente": p.id_cliente or "-",
+                    "ID Contrato": p.id_contrato or "-",
+                    "Cliente": p.nome_cliente or "Sem nome",
+                    "Cidade/Região": p.cidade or "-",
+                    "Serviço": p.tipo_servico or "-",
+                    "Endereço": f"{p.rua or '-'}, {p.bairro or '-'}",
+                    "Criador (AK)": p.criador_excel or "-",
+                    "Data Ref. Excel": p.data_referencia.strftime('%d/%m/%Y') if p.data_referencia else "-"
+                } for p in pendentes]
                 
                 st.dataframe(pd.DataFrame(dados_p), use_container_width=True)
                 
@@ -790,17 +800,24 @@ else:
                 ).all()
                 
                 vagas_disp = []
-                for v in vagas_cad:
-                    if verificar_data_bloqueada(v.data):
-                        continue
-                    ag_qtd = db.query(Agendamento.id).filter(
-                        Agendamento.data_agendamento == v.data,
+                if vagas_cad:
+                    datas_unicas = list(set([v.data for v in vagas_cad]))
+                    agendamentos_qtd_map = {}
+                    ag_list = db.query(Agendamento).filter(
                         Agendamento.cidade == cidade_confirm,
                         Agendamento.tipo_servico == servico_confirm,
-                        Agendamento.periodo == v.periodo
-                    ).count()
-                    if (v.vagas_totais - ag_qtd) > 0:
-                        vagas_disp.append(v)
+                        Agendamento.data_agendamento.in_(datas_unicas)
+                    ).all()
+                    for a in ag_list:
+                        chave = (a.data_agendamento, a.periodo)
+                        agendamentos_qtd_map[chave] = agendamentos_qtd_map.get(chave, 0) + 1
+
+                    for v in vagas_cad:
+                        if verificar_data_bloqueada(v.data):
+                            continue
+                        ag_qtd = agendamentos_qtd_map.get((v.data, v.periodo), 0)
+                        if (v.vagas_totais - ag_qtd) > 0:
+                            vagas_disp.append(v)
                 
                 datas_opt = sorted(list(set([v.data for v in vagas_disp]))) if vagas_disp else []
                 data_sel = st.selectbox("Escolha a Data do Agendamento", datas_opt, format_func=lambda d: d.strftime("%d/%m/%Y")) if datas_opt else None
@@ -870,7 +887,7 @@ else:
             db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 4: PAINEL DE AGENDA
+    # MÓDULO 4: PAINEL DE AGENDA (OTIMIZADO COM BATCH CONSULTING)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "4. Painel de Agenda (3 Dias)":
         st.title("📊 Painel da Agenda de Serviços")
@@ -891,9 +908,32 @@ else:
             db = get_db()
             try:
                 periodos = ["Manhã", "Livre", "Tarde", "Noite"]
+                datas_intervalo = [data_inicio + timedelta(days=i) for i in range(3)]
                 
-                for i in range(3):
-                    dia_atual = data_inicio + timedelta(days=i)
+                # 🚀 OTIMIZAÇÃO MAXIMA: 1 ÚNICA QUERY PARA VAGAS E AGENDAMENTOS DOS 3 DIAS
+                vagas_3dias = db.query(DisponibilidadeVaga).filter(
+                    DisponibilidadeVaga.cidade == cid_painel,
+                    DisponibilidadeVaga.tipo_servico == serv_painel,
+                    DisponibilidadeVaga.data.in_(datas_intervalo)
+                ).all()
+                vagas_map = {(v.data, v.periodo): v.vagas_totais for v in vagas_3dias}
+                
+                agendamentos_3dias = db.query(Agendamento).filter(
+                    Agendamento.cidade == cid_painel,
+                    Agendamento.tipo_servico == serv_painel,
+                    Agendamento.data_agendamento.in_(datas_intervalo)
+                ).all()
+                
+                agendamentos_por_dia = {d: [] for d in datas_intervalo}
+                agendamentos_count = {}
+                
+                for ag in agendamentos_3dias:
+                    chave = (ag.data_agendamento, ag.periodo)
+                    agendamentos_count[chave] = agendamentos_count.get(chave, 0) + 1
+                    if ag.data_agendamento in agendamentos_por_dia:
+                        agendamentos_por_dia[ag.data_agendamento].append(ag)
+
+                for dia_atual in datas_intervalo:
                     lbl_bloqueio = " 🔒 [BLOQUEADO]" if verificar_data_bloqueada(dia_atual) else ""
                     st.subheader(f"📅 Dia {dia_atual.strftime('%d/%m/%Y')} ({dia_atual.strftime('%A')}){lbl_bloqueio}")
                     
@@ -901,18 +941,8 @@ else:
                     agend_row = []
                     
                     for p in periodos:
-                        vaga = db.query(DisponibilidadeVaga).filter_by(
-                            data=dia_atual, cidade=cid_painel, tipo_servico=serv_painel, periodo=p
-                        ).first()
-                        
-                        agendadas_reais = db.query(Agendamento.id).filter(
-                            Agendamento.data_agendamento == dia_atual,
-                            Agendamento.cidade == cid_painel,
-                            Agendamento.tipo_servico == serv_painel,
-                            Agendamento.periodo == p
-                        ).count()
-                        
-                        totais = vaga.vagas_totais if vaga else 0
+                        totais = vagas_map.get((dia_atual, p), 0)
+                        agendadas_reais = agendamentos_count.get((dia_atual, p), 0)
                         disponiveis = max(0, totais - agendadas_reais)
                         
                         disp_row.append(disponiveis)
@@ -928,23 +958,19 @@ else:
                     
                     st.dataframe(df_grade, use_container_width=True, hide_index=True)
                     
-                    clientes_dia = db.query(Agendamento).filter_by(
-                        data_agendamento=dia_atual, cidade=cid_painel, tipo_servico=serv_painel
-                    ).all()
+                    clientes_dia = agendamentos_por_dia.get(dia_atual, [])
                     
                     with st.expander(f"🔍 Ver agendamentos para {dia_atual.strftime('%d/%m/%Y')} ({len(clientes_dia)} registro(s))"):
                         if clientes_dia:
-                            listagem = []
-                            for c in clientes_dia:
-                                listagem.append({
-                                    "Protocolo": c.cliente_id,
-                                    "Cliente": c.nome_cliente if c.nome_cliente else "Aguardando Excel",
-                                    "Período": c.periodo,
-                                    "Observação": c.observacoes if c.observacoes else "-",
-                                    "Agendado Por": getattr(c, 'agendado_por', None) or "-",
-                                    "Criador (AK)": getattr(c, 'criador_excel', None) or "-",
-                                    "Status": c.status
-                                })
+                            listagem = [{
+                                "Protocolo": c.cliente_id,
+                                "Cliente": c.nome_cliente if c.nome_cliente else "Aguardando Excel",
+                                "Período": c.periodo,
+                                "Observação": c.observacoes if c.observacoes else "-",
+                                "Agendado Por": getattr(c, 'agendado_por', None) or "-",
+                                "Criador (AK)": getattr(c, 'criador_excel', None) or "-",
+                                "Status": c.status
+                            } for c in clientes_dia]
                             st.dataframe(pd.DataFrame(listagem), use_container_width=True, hide_index=True)
                         else:
                             st.caption("Nenhum protocolo agendado para esta cidade e serviço neste dia.")
@@ -976,23 +1002,21 @@ else:
                 if not agendamentos:
                     st.info(f"Nenhum agendamento localizado para os filtros selecionados no dia {data_consulta.strftime('%d/%m/%Y')}.")
                 else:
-                    dados_tabela = []
-                    for a in agendamentos:
-                        dados_tabela.append({
-                            "Protocolo": a.cliente_id,
-                            "Cliente": a.nome_cliente if a.nome_cliente else "Pendente (Excel)",
-                            "Cidade": a.cidade,
-                            "Bairro": a.bairro if a.bairro else "-",
-                            "Rua": a.rua if a.rua else "-",
-                            "Serviço": a.tipo_servico,
-                            "Período": a.periodo,
-                            "Observações": a.observacoes if a.observacoes else "-",
-                            "Categoria 4": a.categoria_4 if a.categoria_4 else "-",
-                            "Agendado Por (Sistema)": getattr(a, 'agendado_por', None) or "-",
-                            "Criador (Coluna AK)": getattr(a, 'criador_excel', None) or "-",
-                            "Status": a.status,
-                            "Dados Completos": "Sim" if a.dados_completos else "Não"
-                        })
+                    dados_tabela = [{
+                        "Protocolo": a.cliente_id,
+                        "Cliente": a.nome_cliente if a.nome_cliente else "Pendente (Excel)",
+                        "Cidade": a.cidade,
+                        "Bairro": a.bairro if a.bairro else "-",
+                        "Rua": a.rua if a.rua else "-",
+                        "Serviço": a.tipo_servico,
+                        "Período": a.periodo,
+                        "Observações": a.observacoes if a.observacoes else "-",
+                        "Categoria 4": a.categoria_4 if a.categoria_4 else "-",
+                        "Agendado Por (Sistema)": getattr(a, 'agendado_por', None) or "-",
+                        "Criador (Coluna AK)": getattr(a, 'criador_excel', None) or "-",
+                        "Status": a.status,
+                        "Dados Completos": "Sim" if a.dados_completos else "Não"
+                    } for a in agendamentos]
                     
                     df_ag = pd.DataFrame(dados_tabela)
                     st.dataframe(df_ag, use_container_width=True)
@@ -1008,7 +1032,7 @@ else:
                 db.close()
 
     # -------------------------------------------------------------------------
-    # MÓDULO 5: IMPORTAÇÃO DE EXCEL E GERENCIAMENTO DE DADOS
+    # MÓDULO 5: IMPORTAÇÃO DE EXCEL E GERENCIAMENTO DE DADOS (OTIMIZADO HASHMAP)
     # -------------------------------------------------------------------------
     elif menu_selecionado == "5. Importação de Excel (.xlsx / .xls)":
         st.title("📥 Importação de Planilha e Gerenciamento de Dados")
@@ -1034,8 +1058,19 @@ else:
                     novos_pendentes = 0
                     
                     try:
-                        todos_agendamentos = db.query(Agendamento).all()
-                        
+                        # 🚀 OTIMIZAÇÃO: Criação de Dicionários Indexados para busca em O(1)
+                        agendamentos_map = {}
+                        for a in db.query(Agendamento).all():
+                            for k in [limpar_str(a.cliente_id), limpar_str(getattr(a, 'id_cliente', '')), limpar_str(getattr(a, 'id_contrato', ''))]:
+                                if k:
+                                    agendamentos_map[k] = a
+
+                        pendentes_map = {}
+                        for p in db.query(ProtocoloPendente).all():
+                            for k in [limpar_str(p.protocolo), limpar_str(p.id_cliente), limpar_str(p.id_contrato)]:
+                                if k:
+                                    pendentes_map[k] = p
+
                         for _, row in df.iterrows():
                             tipo_geral = str(row.get('Tipo Geral', row.get('Tipo geral', ''))).strip()
                             if tipo_geral.lower() == 'recolhimento':
@@ -1047,15 +1082,13 @@ else:
                             id_con_excel = limpar_str(row.get('ID Contrato'))
                             
                             ids_linha = [i for i in [proto_excel, id_cli_excel, id_con_excel] if i != ""]
-                            
                             if not ids_linha:
                                 continue
                                 
                             ag = None
-                            for a_item in todos_agendamentos:
-                                ids_banco = [limpar_str(a_item.cliente_id), limpar_str(getattr(a_item, 'id_cliente', '')), limpar_str(getattr(a_item, 'id_contrato', ''))]
-                                if any(i in ids_linha for i in ids_banco if i != ""):
-                                    ag = a_item
+                            for i_id in ids_linha:
+                                if i_id in agendamentos_map:
+                                    ag = agendamentos_map[i_id]
                                     break
                             
                             nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
@@ -1084,12 +1117,11 @@ else:
                                 atualizados += 1
                             else:
                                 main_id = proto_excel or id_cli_excel or id_con_excel
-                                
-                                existe_p = db.query(ProtocoloPendente).filter(
-                                    (ProtocoloPendente.protocolo == main_id) |
-                                    (ProtocoloPendente.id_cliente == id_cli_excel) |
-                                    (ProtocoloPendente.id_contrato == id_con_excel)
-                                ).first()
+                                existe_p = None
+                                for i_id in ids_linha:
+                                    if i_id in pendentes_map:
+                                        existe_p = pendentes_map[i_id]
+                                        break
                                 
                                 if existe_p:
                                     existe_p.protocolo = main_id
@@ -1298,15 +1330,13 @@ else:
             try:
                 todos_u = db.query(Usuario).all()
                 if todos_u:
-                    dados_u = []
-                    for u in todos_u:
-                        dados_u.append({
-                            "ID": u.id,
-                            "Nome": u.nome,
-                            "E-mail": u.email,
-                            "Perfil / Setor": u.perfil.upper(),
-                            "Status": "🟢 Ativo" if u.ativo else "🔴 Inativo"
-                        })
+                    dados_u = [{
+                        "ID": u.id,
+                        "Nome": u.nome,
+                        "E-mail": u.email,
+                        "Perfil / Setor": u.perfil.upper(),
+                        "Status": "🟢 Ativo" if u.ativo else "🔴 Inativo"
+                    } for u in todos_u]
                     st.dataframe(pd.DataFrame(dados_u), use_container_width=True, hide_index=True)
             finally:
                 db.close()
