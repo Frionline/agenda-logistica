@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
-from sqlalchemy import or_
+from sqlalchemy import or_, func  # 👈 'func' importado aqui
 import os
 from database import init_db, get_db
 
@@ -502,21 +502,20 @@ else:
             col_m, col_l, col_t, col_n = st.columns(4)
             cols = [col_m, col_l, col_t, col_n]
             
-            # OTIMIZAÇÃO: Consulta em lote das vagas e agendamentos para a data/cidade/serviço
+            # Consulta otimizada de vagas e contagem de agendamentos usando func.count da SQLAlchemy
             registros_vagas = {
                 v.periodo: v for v in db.query(DisponibilidadeVaga).filter_by(
                     data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel
                 ).all()
             }
             
-            agendamentos_qtd = {
-                p: 0 for p in periodos
-            }
-            counts = db.query(Agendamento.periodo, pd.func.count(Agendamento.id)).filter(
+            agendamentos_qtd = {p: 0 for p in periodos}
+            counts = db.query(Agendamento.periodo, func.count(Agendamento.id)).filter(
                 Agendamento.data_agendamento == data_sel,
                 Agendamento.cidade == cidade_sel,
                 Agendamento.tipo_servico == servico_sel
             ).group_by(Agendamento.periodo).all()
+            
             for p_nome, count_val in counts:
                 agendamentos_qtd[p_nome] = count_val
 
@@ -610,7 +609,6 @@ else:
                 if not cidade_valida or not servico_valido:
                     st.info("👆 Selecione a **Cidade do Atendimento** e o **Tipo de Serviço** para carregar as datas e vagas disponíveis.")
                 else:
-                    # Restringe visualização de vagas para 60 dias a partir de hoje
                     vagas_cadastradas = db.query(DisponibilidadeVaga).filter(
                         DisponibilidadeVaga.cidade == cidade_valida,
                         DisponibilidadeVaga.tipo_servico == servico_valido,
@@ -620,7 +618,6 @@ else:
                     
                     vagas_disponiveis = []
                     if vagas_cadastradas:
-                        # Busca agendamentos ocupados em uma única query
                         datas_unicas = list(set([v.data for v in vagas_cadastradas]))
                         agendamentos_existentes_list = db.query(Agendamento).filter(
                             Agendamento.cidade == cidade_valida,
@@ -910,7 +907,6 @@ else:
                 periodos = ["Manhã", "Livre", "Tarde", "Noite"]
                 datas_intervalo = [data_inicio + timedelta(days=i) for i in range(3)]
                 
-                # 🚀 OTIMIZAÇÃO MAXIMA: 1 ÚNICA QUERY PARA VAGAS E AGENDAMENTOS DOS 3 DIAS
                 vagas_3dias = db.query(DisponibilidadeVaga).filter(
                     DisponibilidadeVaga.cidade == cid_painel,
                     DisponibilidadeVaga.tipo_servico == serv_painel,
@@ -1058,7 +1054,6 @@ else:
                     novos_pendentes = 0
                     
                     try:
-                        # 🚀 OTIMIZAÇÃO: Criação de Dicionários Indexados para busca em O(1)
                         agendamentos_map = {}
                         for a in db.query(Agendamento).all():
                             for k in [limpar_str(a.cliente_id), limpar_str(getattr(a, 'id_cliente', '')), limpar_str(getattr(a, 'id_contrato', ''))]:
