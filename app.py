@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime, timedelta
-from sqlalchemy import or_, func  # 👈 'func' importado aqui
+from sqlalchemy import or_, func
 import os
 from database import init_db, get_db
 
@@ -72,14 +72,13 @@ def limpar_cache_geral():
 # DIÁLOGOS E POP-UPS DE CONFIRMAÇÃO (@st.dialog)
 # -----------------------------------------------------------------------------
 @st.dialog("⚠️ Confirmar Exclusão de Pendentes")
-def modal_confirmar_limpeza_pendentes():
+def modal_confirmar_limpeza_pendentes(db):
     st.warning("Tem certeza de que deseja apagar **TODOS** os protocolos da lista de pendentes?")
     st.caption("Esta ação é irreversível e removerá todos os protocolos importados que ainda não foram agendados.")
     
     col_modal1, col_modal2 = st.columns(2)
     with col_modal1:
         if st.button("Sim, apagar tudo", type="primary", use_container_width=True):
-            db = get_db()
             try:
                 db.query(ProtocoloPendente).delete()
                 db.commit()
@@ -89,21 +88,18 @@ def modal_confirmar_limpeza_pendentes():
             except Exception as e:
                 db.rollback()
                 st.error(f"Erro ao apagar pendentes: {e}")
-            finally:
-                db.close()
     with col_modal2:
         if st.button("Cancelar", use_container_width=True):
             st.rerun()
 
 @st.dialog("⚠️ Confirmar Exclusão de Usuário")
-def modal_confirmar_exclusao_usuario(user_id, nome_user, email_user):
+def modal_confirmar_exclusao_usuario(db, user_id, nome_user, email_user):
     st.warning(f"Tem certeza de que deseja apagar o usuário **{nome_user}** (`{email_user}`)?")
     st.caption("Esta ação é permanente e removerá o acesso deste colaborador ao sistema.")
     
     col_m1, col_m2 = st.columns(2)
     with col_m1:
         if st.button("Sim, apagar usuário", type="primary", use_container_width=True):
-            db = get_db()
             try:
                 usr_del = db.query(Usuario).filter_by(id=user_id).first()
                 if usr_del:
@@ -115,8 +111,6 @@ def modal_confirmar_exclusao_usuario(user_id, nome_user, email_user):
             except Exception as e:
                 db.rollback()
                 st.error(f"Erro ao excluir usuário: {e}")
-            finally:
-                db.close()
     with col_m2:
         if st.button("Cancelar", use_container_width=True):
             st.rerun()
@@ -298,141 +292,137 @@ def fazer_logout():
     st.rerun()
 
 # -----------------------------------------------------------------------------
-# TELA DE LOGIN OU MENU PRINCIPAL
+# EXECUÇÃO PRINCIPAL DO APP COM CONEXÃO REAPROVEITADA (GET_DB GLOBAL)
 # -----------------------------------------------------------------------------
-if st.session_state.usuario is None:
-    col_logo1, col_logo2 = st.columns([1.8, 2], vertical_alignment="center")
-    with col_logo1:
-        if os.path.exists("logo.png"):
-            st.image("logo.png", width=420)
-        elif os.path.exists("logo.jpg"):
-            st.image("logo.jpg", width=420)
-        else:
-            st.markdown("<h1 style='color: #FF6600; font-size: 3.8rem; font-weight: 900; margin: 0; letter-spacing: -1px;'>FRIONLINE</h1>", unsafe_allow_html=True)
-    with col_logo2:
+db = get_db()
+
+try:
+    if st.session_state.usuario is None:
+        col_logo1, col_logo2 = st.columns([1.8, 2], vertical_alignment="center")
+        with col_logo1:
+            if os.path.exists("logo.png"):
+                st.image("logo.png", width=420)
+            elif os.path.exists("logo.jpg"):
+                st.image("logo.jpg", width=420)
+            else:
+                st.markdown("<h1 style='color: #FF6600; font-size: 3.8rem; font-weight: 900; margin: 0; letter-spacing: -1px;'>FRIONLINE</h1>", unsafe_allow_html=True)
+        with col_logo2:
+            st.markdown("""
+                <div class="badge-container">
+                    <span class="frionline-badge">SISTEMA CORPORATIVO FRIONLINE</span>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
         st.markdown("""
-            <div class="badge-container">
-                <span class="frionline-badge">SISTEMA CORPORATIVO FRIONLINE</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown("""
-        <div class="hero-container">
-            <h1 style="color: #FFFFFF; margin-bottom: 8px; font-size: 2.2rem; font-weight: 800;">
-                📅 Central de Agendamentos & Operações Logísticas
-            </h1>
-            <p style="color: #CBD5E1; font-size: 1.05rem; margin-bottom: 0px; line-height: 1.5;">
-                Sua plataforma unificada para controle de disponibilidade por cidade, agendamento inteligente de ordens de serviço e acompanhamento técnico em tempo real.
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-
-    col_info, col_login = st.columns([1.1, 0.9], gap="large")
-
-    with col_info:
-        st.markdown("""
-            <div class="info-card">
-                <h3 style="color: #1E293B; margin-top: 0; font-size: 1.25rem;">📌 Acesso Restrito a Colaboradores</h3>
-                <p style="color: #475569; line-height: 1.6; font-size: 0.98rem;">
-                    Para agendar serviços, consultar vagas de logística ou processar planilhas pendentes, efetue seu login ao lado com sua conta corporativa.
+            <div class="hero-container">
+                <h1 style="color: #FFFFFF; margin-bottom: 8px; font-size: 2.2rem; font-weight: 800;">
+                    📅 Central de Agendamentos & Operações Logísticas
+                </h1>
+                <p style="color: #CBD5E1; font-size: 1.05rem; margin-bottom: 0px; line-height: 1.5;">
+                    Sua plataforma unificada para controle de disponibilidade por cidade, agendamento inteligente de ordens de serviço e acompanhamento técnico em tempo real.
                 </p>
-                <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 15px 0;">
-                <ul style="color: #64748B; font-size: 0.92rem; padding-left: 18px; margin-bottom: 0;">
-                    <li style="margin-bottom: 8px;"><b>Suporte & Comercial:</b> Agendamento manual e tratamento de pendências importadas.</li>
-                    <li style="margin-bottom: 8px;"><b>Gestão Logística:</b> Configuração de vagas diárias por cidade e tipo de O.S.</li>
-                    <li><b>Relatórios & Painéis:</b> Visão completa da agenda técnica dos próximos 3 dias.</li>
-                </ul>
             </div>
         """, unsafe_allow_html=True)
 
-    with col_login:
-        st.markdown("<h3 style='color: #1E293B; margin-top: 0;'>🔐 Autenticação</h3>", unsafe_allow_html=True)
-        with st.form("form_login"):
-            email = st.text_input("E-mail de acesso", placeholder="seu.email@frionline.com.br")
-            senha = st.text_input("Senha", type="password", placeholder="••••••••")
-            btn_entrar = st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True)
-            
-            if btn_entrar:
-                usr = autenticar_usuario(email, senha)
-                if usr:
-                    st.session_state.usuario = usr
-                    st.success(f"Bem-vindo(a), {usr['nome']}!")
-                    st.rerun()
-                else:
-                    st.error("E-mail ou senha incorretos (ou usuário inativo).")
+        col_info, col_login = st.columns([1.1, 0.9], gap="large")
 
-else:
-    usr = st.session_state.usuario
-    
-    if os.path.exists("logo.png"):
-        st.sidebar.image("logo.png", use_column_width=True)
-    elif os.path.exists("logo.jpg"):
-        st.sidebar.image("logo.jpg", use_column_width=True)
+        with col_info:
+            st.markdown("""
+                <div class="info-card">
+                    <h3 style="color: #1E293B; margin-top: 0; font-size: 1.25rem;">📌 Acesso Restrito a Colaboradores</h3>
+                    <p style="color: #475569; line-height: 1.6; font-size: 0.98rem;">
+                        Para agendar serviços, consultar vagas de logística ou processar planilhas pendentes, efetue seu login ao lado com sua conta corporativa.
+                    </p>
+                    <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 15px 0;">
+                    <ul style="color: #64748B; font-size: 0.92rem; padding-left: 18px; margin-bottom: 0;">
+                        <li style="margin-bottom: 8px;"><b>Suporte & Comercial:</b> Agendamento manual e tratamento de pendências importadas.</li>
+                        <li style="margin-bottom: 8px;"><b>Gestão Logística:</b> Configuração de vagas diárias por cidade e tipo de O.S.</li>
+                        <li><b>Relatórios & Painéis:</b> Visão completa da agenda técnica dos próximos 3 dias.</li>
+                    </ul>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with col_login:
+            st.markdown("<h3 style='color: #1E293B; margin-top: 0;'>🔐 Autenticação</h3>", unsafe_allow_html=True)
+            with st.form("form_login"):
+                email = st.text_input("E-mail de acesso", placeholder="seu.email@frionline.com.br")
+                senha = st.text_input("Senha", type="password", placeholder="••••••••")
+                btn_entrar = st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True)
+                
+                if btn_entrar:
+                    usr = autenticar_usuario(email, senha)
+                    if usr:
+                        st.session_state.usuario = usr
+                        st.success(f"Bem-vindo(a), {usr['nome']}!")
+                        st.rerun()
+                    else:
+                        st.error("E-mail ou senha incorretos (ou usuário inativo).")
+
     else:
-        st.sidebar.markdown("<h2 style='color: #FF6600; font-size: 2.2rem; font-weight: 900; margin-bottom: 0;'>FRIONLINE</h2>", unsafe_allow_html=True)
-        st.sidebar.caption("LOGÍSTICA & OPERAÇÕES")
+        usr = st.session_state.usuario
         
-    st.sidebar.markdown("---")
-    st.sidebar.write(f"👤 **{usr['nome']}**")
-    st.sidebar.caption(f"Perfil: {usr['perfil'].upper()}")
-    if st.sidebar.button("🚪 Sair do Sistema", use_container_width=True):
-        fazer_logout()
+        if os.path.exists("logo.png"):
+            st.sidebar.image("logo.png", use_column_width=True)
+        elif os.path.exists("logo.jpg"):
+            st.sidebar.image("logo.jpg", use_column_width=True)
+        else:
+            st.sidebar.markdown("<h2 style='color: #FF6600; font-size: 2.2rem; font-weight: 900; margin-bottom: 0;'>FRIONLINE</h2>", unsafe_allow_html=True)
+            st.sidebar.caption("LOGÍSTICA & OPERAÇÕES")
+            
+        st.sidebar.markdown("---")
+        st.sidebar.write(f"👤 **{usr['nome']}**")
+        st.sidebar.caption(f"Perfil: {usr['perfil'].upper()}")
+        if st.sidebar.button("🚪 Sair do Sistema", use_container_width=True):
+            fazer_logout()
+            
+        st.sidebar.markdown("---")
         
-    st.sidebar.markdown("---")
-    
-    # -------------------------------------------------------------------------
-    # MONTAGEM DINÂMICA DO MENU COM BASE NAS PERMISSÕES DO BANCO
-    # -------------------------------------------------------------------------
-    opcoes_menu = carregar_permissoes_perfil(usr["perfil"])
-    
-    # Admin sempre tem o Módulo 6 garantido
-    if usr["perfil"] == "admin" and "6. Gestão de Usuários" not in opcoes_menu:
-        opcoes_menu.append("6. Gestão de Usuários")
+        # -------------------------------------------------------------------------
+        # MONTAGEM DINÂMICA DO MENU
+        # -------------------------------------------------------------------------
+        opcoes_menu = carregar_permissoes_perfil(usr["perfil"])
         
-    opcoes_menu.append("🔑 Alterar Minha Senha")
+        if usr["perfil"] == "admin" and "6. Gestão de Usuários" not in opcoes_menu:
+            opcoes_menu.append("6. Gestão de Usuários")
+            
+        opcoes_menu.append("🔑 Alterar Minha Senha")
 
-    if "menu_navegacao" in st.session_state and st.session_state["menu_navegacao"] not in opcoes_menu:
-        st.session_state["menu_navegacao"] = opcoes_menu[0]
+        if "menu_navegacao" in st.session_state and st.session_state["menu_navegacao"] not in opcoes_menu:
+            st.session_state["menu_navegacao"] = opcoes_menu[0]
 
-    menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
+        menu_selecionado = st.sidebar.radio("Navegação", opcoes_menu, key="menu_navegacao")
 
-    # -------------------------------------------------------------------------
-    # MÓDULO 1: GESTÃO DE VAGAS + CADEADO DE BLOQUEIO DINÂMICO (AUTO-SAVE ENTER)
-    # -------------------------------------------------------------------------
-    if menu_selecionado == "1. Gestão de Vagas (Logística)":
-        st.title("📅 Gestão de Disponibilidade de Vagas")
-        
-        st.markdown("### 🔒 Bloqueio de Agendamento por Período (Cadeado Global)")
-        db = get_db()
-        try:
+        # -------------------------------------------------------------------------
+        # MÓDULO 1: GESTÃO DE VAGAS
+        # -------------------------------------------------------------------------
+        if menu_selecionado == "1. Gestão de Vagas (Logística)":
+            st.title("📅 Gestão de Disponibilidade de Vagas")
+            st.markdown("### 🔒 Bloqueio de Agendamento por Período (Cadeado Global)")
+            
             bloqueio_atual = db.query(BloqueioAgenda).filter_by(ativo=True).first()
             
             def salvar_bloqueio_automatico():
-                db_cb = get_db()
-                try:
-                    dt_ini = st.session_state.get("dt_ini_bloqueio_key")
-                    dt_fim = st.session_state.get("dt_fim_bloqueio_key")
-                    
-                    if dt_ini and dt_fim:
-                        b_ativo = db_cb.query(BloqueioAgenda).filter_by(ativo=True).first()
-                        if b_ativo:
-                            b_ativo.data_inicio = dt_ini
-                            b_ativo.data_fim = dt_fim
-                            b_ativo.criado_por = usr["nome"]
-                        else:
-                            novo_b = BloqueioAgenda(
-                                data_inicio=dt_ini,
-                                data_fim=dt_fim,
-                                ativo=True,
-                                criado_por=usr["nome"]
-                            )
-                            db_cb.add(novo_b)
-                        db_cb.commit()
-                        limpar_cache_geral()
-                finally:
-                    db_cb.close()
+                dt_ini = st.session_state.get("dt_ini_bloqueio_key")
+                dt_fim = st.session_state.get("dt_fim_bloqueio_key")
+                
+                if dt_ini and dt_fim:
+                    b_ativo = db.query(BloqueioAgenda).filter_by(ativo=True).first()
+                    if b_ativo:
+                        b_ativo.data_inicio = dt_ini
+                        b_ativo.data_fim = dt_fim
+                        b_ativo.criado_por = usr["nome"]
+                    else:
+                        novo_b = BloqueioAgenda(
+                            data_inicio=dt_ini,
+                            data_fim=dt_fim,
+                            ativo=True,
+                            criado_por=usr["nome"]
+                        )
+                        db.add(novo_b)
+                    db.commit()
+                    limpar_cache_geral()
 
             c_cad1, c_cad2, c_cad3 = st.columns([1.5, 1.5, 1.5])
             with c_cad1:
@@ -480,29 +470,24 @@ else:
                 st.error(f"⚠️ **CADEADO FECHADO:** Agendamentos bloqueados para todas as O.S. entre **{bloqueio_atual.data_inicio.strftime('%d/%m/%Y')}** e **{bloqueio_atual.data_fim.strftime('%d/%m/%Y')}**.")
             else:
                 st.info("ℹ️ **CADEADO ABERTO:** O preenchimento de vagas está liberado para todas as datas.")
-        finally:
-            db.close()
+                
+            st.markdown("---")
             
-        st.markdown("---")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            cidade_sel = st.selectbox("Cidade", CIDADES)
-        with col2:
-            servico_sel = st.selectbox("Tipo de Serviço", SERVICOS)
-        with col3:
-            data_sel = st.date_input("Data do Serviço", value=date.today(), format="DD/MM/YYYY")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                cidade_sel = st.selectbox("Cidade", CIDADES)
+            with col2:
+                servico_sel = st.selectbox("Tipo de Serviço", SERVICOS)
+            with col3:
+                data_sel = st.date_input("Data do Serviço", value=date.today(), format="DD/MM/YYYY")
 
-        st.markdown("### Configuração de Vagas por Período")
-        db = get_db()
-        try:
+            st.markdown("### Configuração de Vagas por Período")
             periodos = ["Manhã", "Livre", "Tarde", "Noite"]
             vagas_input = {}
             
             col_m, col_l, col_t, col_n = st.columns(4)
             cols = [col_m, col_l, col_t, col_n]
             
-            # Consulta otimizada de vagas e contagem de agendamentos usando func.count da SQLAlchemy
             registros_vagas = {
                 v.periodo: v for v in db.query(DisponibilidadeVaga).filter_by(
                     data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel
@@ -529,39 +514,36 @@ else:
                     vagas_input[p] = st.number_input(f"Total Vagas - {p}", min_value=agendadas_reais, value=max(v_atual, agendadas_reais), step=1)
 
             if st.button("Salvar Disponibilidade", type="primary"):
-                for p, qtd in vagas_input.items():
-                    registro = registros_vagas.get(p)
-                    if registro:
-                        registro.vagas_totais = qtd
-                    else:
-                        novo_reg = DisponibilidadeVaga(
-                            data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel,
-                            periodo=p, vagas_totais=qtd, vagas_agendadas=0
-                        )
-                        db.add(novo_reg)
-                db.commit()
-                limpar_cache_geral()
-                st.success("Disponibilidade de vagas atualizada com sucesso!")
-        finally:
-            db.close()
+                with st.spinner("Atualizando vagas..."):
+                    for p, qtd in vagas_input.items():
+                        registro = registros_vagas.get(p)
+                        if registro:
+                            registro.vagas_totais = qtd
+                        else:
+                            novo_reg = DisponibilidadeVaga(
+                                data=data_sel, cidade=cidade_sel, tipo_servico=servico_sel,
+                                periodo=p, vagas_totais=qtd, vagas_agendadas=0
+                            )
+                            db.add(novo_reg)
+                    db.commit()
+                    limpar_cache_geral()
+                    st.success("Disponibilidade de vagas atualizada com sucesso!")
 
-    # -------------------------------------------------------------------------
-    # MÓDULO 2: AGENDAMENTO MANUAL
-    # -------------------------------------------------------------------------
-    elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
-        st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
-        
-        if st.session_state.pop("limpar_proto_flag", False):
-            st.session_state["input_proto_manual"] = ""
+        # -------------------------------------------------------------------------
+        # MÓDULO 2: AGENDAMENTO MANUAL
+        # -------------------------------------------------------------------------
+        elif menu_selecionado == "2. Agendamento Manual (Suporte/Comercial)":
+            st.title("🎧 Central de Agendamentos e Reagendamentos Manual")
+            
+            if st.session_state.pop("limpar_proto_flag", False):
+                st.session_state["input_proto_manual"] = ""
 
-        if "msg_sucesso_manual" in st.session_state:
-            st.success(st.session_state.pop("msg_sucesso_manual"))
+            if "msg_sucesso_manual" in st.session_state:
+                st.success(st.session_state.pop("msg_sucesso_manual"))
 
-        if "input_proto_manual" not in st.session_state:
-            st.session_state["input_proto_manual"] = ""
+            if "input_proto_manual" not in st.session_state:
+                st.session_state["input_proto_manual"] = ""
 
-        db = get_db()
-        try:
             cliente_id_input = st.text_input(
                 "ID de Protocolo", 
                 key="input_proto_manual", 
@@ -710,39 +692,51 @@ else:
                                 st.session_state["limpar_proto_flag"] = True
                                 st.session_state["msg_sucesso_manual"] = f"✅ Agendamento do protocolo {cliente_id} realizado com sucesso!"
                                 st.rerun()
-        finally:
-            db.close()
 
-    # -------------------------------------------------------------------------
-    # MÓDULO 3: CENTRAL DE PENDÊNCIAS
-    # -------------------------------------------------------------------------
-    elif menu_selecionado == "3. 📌 Central de Pendências de Agendamento":
-        st.title("📌 Central de Protocolos Pendentes de Agendamento")
-        st.caption("Protocolos importados do Excel que ainda não possuem data/período agendados no sistema.")
-        
-        if "msg_sucesso_pendente" in st.session_state:
-            st.success(st.session_state.pop("msg_sucesso_pendente"))
+        # -------------------------------------------------------------------------
+        # MÓDULO 3: CENTRAL DE PENDÊNCIAS (COM BUSCA EM TEMPO REAL E LIMITE 100)
+        # -------------------------------------------------------------------------
+        elif menu_selecionado == "3. 📌 Central de Protocolos Pendentes de Agendamento":
+            st.title("📌 Central de Protocolos Pendentes de Agendamento")
+            st.caption("Protocolos importados do Excel que ainda não possuem data/período agendados no sistema.")
             
-        db = get_db()
-        try:
-            pendentes = db.query(ProtocoloPendente).filter(
+            if "msg_sucesso_pendente" in st.session_state:
+                st.success(st.session_state.pop("msg_sucesso_pendente"))
+                
+            query_pendentes = db.query(ProtocoloPendente).filter(
                 or_(ProtocoloPendente.status == "Pendente", ProtocoloPendente.status == None, ProtocoloPendente.status == "")
-            ).all()
+            )
+            
+            total_geral_pendentes = query_pendentes.count()
+            
+            # 🔍 Filtro de Busca Instantânea para não travar a tela
+            filtro_busca = st.text_input("🔍 Filtrar Pendências (Digite o Protocolo ou Nome do Cliente):", placeholder="Ex: 123456 ou Maria")
+            
+            if filtro_busca:
+                term = f"%{filtro_busca.strip()}%"
+                query_pendentes = query_pendentes.filter(
+                    or_(
+                        ProtocoloPendente.protocolo.ilike(term),
+                        ProtocoloPendente.nome_cliente.ilike(term)
+                    )
+                )
+            
+            pendentes = query_pendentes.limit(100).all()
             
             if not pendentes:
-                st.info("ℹ️ Nenhum protocolo pendente encontrado no momento. Faça a importação da planilha no Módulo 5 para carregar os novos casos.")
+                st.info("ℹ️ Nenhum protocolo pendente localizado com o filtro digitado.")
             else:
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Total Pendentes", f"{len(pendentes)} O.S.")
+                m1.metric("Total de O.S. Pendentes", f"{total_geral_pendentes} O.S.")
                 
                 cidades_p = set([p.cidade for p in pendentes if p.cidade])
-                m2.metric("Cidades Envolvidas", f"{len(cidades_p)} cidades")
+                m2.metric("Cidades no Filtro", f"{len(cidades_p)} cidades")
                 
                 servicos_p = set([p.tipo_servico for p in pendentes if p.tipo_servico])
                 m3.metric("Tipos de Serviço", f"{len(servicos_p)} tipos")
                 
                 st.markdown("---")
-                st.subheader("📋 Lista de Protocolos Aguardando Vaga")
+                st.subheader("📋 Lista de Protocolos Aguardando Vaga (Exibindo até 100 registros)")
                 
                 dados_p = [{
                     "Protocolo": p.protocolo,
@@ -880,30 +874,26 @@ else:
                     limpar_cache_geral()
                     st.session_state["msg_sucesso_pendente"] = f"🗑️ A O.S. de Protocolo {proto_removido} foi excluída com sucesso das Pendências!"
                     st.rerun()
-        finally:
-            db.close()
 
-    # -------------------------------------------------------------------------
-    # MÓDULO 4: PAINEL DE AGENDA (OTIMIZADO COM BATCH CONSULTING)
-    # -------------------------------------------------------------------------
-    elif menu_selecionado == "4. Painel de Agenda (3 Dias)":
-        st.title("📊 Painel da Agenda de Serviços")
-        
-        tab_painel, tab_detalhes = st.tabs(["🗓️ Visão 3 Dias (Grade)", "📋 Lista Detalhada de O.S."])
-        
-        with tab_painel:
-            col_c, col_s, col_d = st.columns(3)
-            with col_c:
-                cid_painel = st.selectbox("Selecione a Cidade", CIDADES)
-            with col_s:
-                serv_painel = st.selectbox("Selecione o Tipo de Serviço", SERVICOS)
-            with col_d:
-                data_inicio = st.date_input("Data Inicial", value=date.today(), format="DD/MM/YYYY")
-                
-            st.markdown("---")
+        # -------------------------------------------------------------------------
+        # MÓDULO 4: PAINEL DE AGENDA
+        # -------------------------------------------------------------------------
+        elif menu_selecionado == "4. Painel de Agenda (3 Dias)":
+            st.title("📊 Painel da Agenda de Serviços")
             
-            db = get_db()
-            try:
+            tab_painel, tab_detalhes = st.tabs(["🗓️ Visão 3 Dias (Grade)", "📋 Lista Detalhada de O.S."])
+            
+            with tab_painel:
+                col_c, col_s, col_d = st.columns(3)
+                with col_c:
+                    cid_painel = st.selectbox("Selecione a Cidade", CIDADES)
+                with col_s:
+                    serv_painel = st.selectbox("Selecione o Tipo de Serviço", SERVICOS)
+                with col_d:
+                    data_inicio = st.date_input("Data Inicial", value=date.today(), format="DD/MM/YYYY")
+                    
+                st.markdown("---")
+                
                 periodos = ["Manhã", "Livre", "Tarde", "Noite"]
                 datas_intervalo = [data_inicio + timedelta(days=i) for i in range(3)]
                 
@@ -972,21 +962,17 @@ else:
                             st.caption("Nenhum protocolo agendado para esta cidade e serviço neste dia.")
                             
                     st.markdown("<br>", unsafe_allow_html=True)
-            finally:
-                db.close()
                 
-        with tab_detalhes:
-            st.subheader("Consulta e Download do Relatório Detalhado")
-            col_d1, col_c1, col_s1 = st.columns(3)
-            with col_d1:
-                data_consulta = st.date_input("Data da Consulta", value=date.today(), format="DD/MM/YYYY")
-            with col_c1:
-                cidade_filtro = st.selectbox("Filtrar Cidade", ["Todas"] + CIDADES)
-            with col_s1:
-                servico_filtro = st.selectbox("Filtrar Tipo de O.S.", ["Todos"] + SERVICOS)
-                
-            db = get_db()
-            try:
+            with tab_detalhes:
+                st.subheader("Consulta e Download do Relatório Detalhado")
+                col_d1, col_c1, col_s1 = st.columns(3)
+                with col_d1:
+                    data_consulta = st.date_input("Data da Consulta", value=date.today(), format="DD/MM/YYYY")
+                with col_c1:
+                    cidade_filtro = st.selectbox("Filtrar Cidade", ["Todas"] + CIDADES)
+                with col_s1:
+                    servico_filtro = st.selectbox("Filtrar Tipo de O.S.", ["Todos"] + SERVICOS)
+                    
                 query = db.query(Agendamento).filter(Agendamento.data_agendamento == data_consulta)
                 if cidade_filtro != "Todas":
                     query = query.filter(Agendamento.cidade == cidade_filtro)
@@ -1024,156 +1010,148 @@ else:
                         file_name=f"agendamentos_{data_consulta.strftime('%Y_%m_%d')}.csv",
                         mime="text/csv"
                     )
-            finally:
-                db.close()
 
-    # -------------------------------------------------------------------------
-    # MÓDULO 5: IMPORTAÇÃO DE EXCEL E GERENCIAMENTO DE DADOS (OTIMIZADO HASHMAP)
-    # -------------------------------------------------------------------------
-    elif menu_selecionado == "5. Importação de Excel (.xlsx / .xls)":
-        st.title("📥 Importação de Planilha e Gerenciamento de Dados")
-        
-        tab_imp, tab_del = st.tabs(["📥 Importar Excel", "🗑️ Gerenciar / Excluir Registros"])
-        
-        with tab_imp:
-            arquivo_excel = st.file_uploader("1. Selecione o arquivo Excel (.xlsx ou .xls)", type=["xlsx", "xls"])
-            data_referencia = st.date_input("2. Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
+        # -------------------------------------------------------------------------
+        # MÓDULO 5: IMPORTAÇÃO DE EXCEL E GERENCIAMENTO DE DADOS
+        # -------------------------------------------------------------------------
+        elif menu_selecionado == "5. Importação de Excel (.xlsx / .xls)":
+            st.title("📥 Importação de Planilha e Gerenciamento de Dados")
             
-            btn_processar = st.button("🚀 Processar e Atualizar Agendamentos", type="primary")
+            tab_imp, tab_del = st.tabs(["📥 Importar Excel", "🗑️ Gerenciar / Excluir Registros"])
             
-            if btn_processar:
-                if not arquivo_excel:
-                    st.warning("⚠️ Por favor, selecione e faça o upload de um arquivo Excel acima primeiro.")
-                else:
-                    df = pd.read_excel(arquivo_excel, dtype=str)
-                    st.write("Visualização da Planilha Enviada:", df.head())
-                    
-                    db = get_db()
-                    atualizados = 0
-                    ignorados_recolhimento = 0
-                    novos_pendentes = 0
-                    
-                    try:
-                        agendamentos_map = {}
-                        for a in db.query(Agendamento).all():
-                            for k in [limpar_str(a.cliente_id), limpar_str(getattr(a, 'id_cliente', '')), limpar_str(getattr(a, 'id_contrato', ''))]:
-                                if k:
-                                    agendamentos_map[k] = a
-
-                        pendentes_map = {}
-                        for p in db.query(ProtocoloPendente).all():
-                            for k in [limpar_str(p.protocolo), limpar_str(p.id_cliente), limpar_str(p.id_contrato)]:
-                                if k:
-                                    pendentes_map[k] = p
-
-                        for _, row in df.iterrows():
-                            tipo_geral = str(row.get('Tipo Geral', row.get('Tipo geral', ''))).strip()
-                            if tipo_geral.lower() == 'recolhimento':
-                                ignorados_recolhimento += 1
-                                continue
+            with tab_imp:
+                arquivo_excel = st.file_uploader("1. Selecione o arquivo Excel (.xlsx ou .xls)", type=["xlsx", "xls"])
+                data_referencia = st.date_input("2. Data de Referência dos Agendamentos", value=date.today(), format="DD/MM/YYYY")
+                
+                btn_processar = st.button("🚀 Processar e Atualizar Agendamentos", type="primary")
+                
+                if btn_processar:
+                    if not arquivo_excel:
+                        st.warning("⚠️ Por favor, selecione e faça o upload de um arquivo Excel acima primeiro.")
+                    else:
+                        with st.spinner("Lendo e processando planilha..."):
+                            df = pd.read_excel(arquivo_excel, dtype=str)
+                            st.write("Visualização da Planilha Enviada:", df.head())
                             
-                            proto_excel = limpar_str(row.get('Protocolo'))
-                            id_cli_excel = limpar_str(row.get('ID Cliente'))
-                            id_con_excel = limpar_str(row.get('ID Contrato'))
+                            atualizados = 0
+                            ignorados_recolhimento = 0
+                            novos_pendentes = 0
                             
-                            ids_linha = [i for i in [proto_excel, id_cli_excel, id_con_excel] if i != ""]
-                            if not ids_linha:
-                                continue
+                            agendamentos_map = {}
+                            for a in db.query(Agendamento).all():
+                                for k in [limpar_str(a.cliente_id), limpar_str(getattr(a, 'id_cliente', '')), limpar_str(getattr(a, 'id_contrato', ''))]:
+                                    if k:
+                                        agendamentos_map[k] = a
+
+                            pendentes_map = {}
+                            for p in db.query(ProtocoloPendente).all():
+                                for k in [limpar_str(p.protocolo), limpar_str(p.id_cliente), limpar_str(p.id_contrato)]:
+                                    if k:
+                                        pendentes_map[k] = p
+
+                            for _, row in df.iterrows():
+                                tipo_geral = str(row.get('Tipo Geral', row.get('Tipo geral', ''))).strip()
+                                if tipo_geral.lower() == 'recolhimento':
+                                    ignorados_recolhimento += 1
+                                    continue
                                 
-                            ag = None
-                            for i_id in ids_linha:
-                                if i_id in agendamentos_map:
-                                    ag = agendamentos_map[i_id]
-                                    break
-                            
-                            nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
-                            rua_base = str(row.get('Rua', '')).strip() if pd.notna(row.get('Rua')) else ""
-                            num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
-                            rua_c = f"{rua_base}, {num_rua}".strip(", ") if rua_base else None
-                            bairro_c = str(row.get('Bairro', '')).strip() if pd.notna(row.get('Bairro')) else None
-                            cidade_raw = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
-                            cidade_c = normalizar_cidade(cidade_raw) if cidade_raw else None
-                            
-                            cat_val = str(row.get('Catálogo', '')).strip() if pd.notna(row.get('Catálogo')) else ""
-                            tg_val = str(row.get('Tipo Geral', '')).strip() if pd.notna(row.get('Tipo Geral')) else ""
-                            servico_c = normalizar_servico(cat_val or tg_val)
-                            
-                            cat_4 = str(row.get('Categoria 4', '')).strip() if pd.notna(row.get('Categoria 4')) else None
-                            criador_ak = str(row.get('Criador', '')).strip() if pd.notna(row.get('Criador')) else None
-                            
-                            if ag:
-                                if nome_c: ag.nome_cliente = nome_c
-                                if rua_c: ag.rua = rua_c
-                                if bairro_c: ag.bairro = bairro_c
-                                if cat_4 and ag.tipo_servico == "Reparo": ag.categoria_4 = cat_4
-                                ag.agendado_por = ag.agendado_por or usr["nome"]
-                                if criador_ak: ag.criador_excel = criador_ak
-                                ag.dados_completos = True
-                                atualizados += 1
-                            else:
-                                main_id = proto_excel or id_cli_excel or id_con_excel
-                                existe_p = None
+                                proto_excel = limpar_str(row.get('Protocolo'))
+                                id_cli_excel = limpar_str(row.get('ID Cliente'))
+                                id_con_excel = limpar_str(row.get('ID Contrato'))
+                                
+                                ids_linha = [i for i in [proto_excel, id_cli_excel, id_con_excel] if i != ""]
+                                if not ids_linha:
+                                    continue
+                                    
+                                ag = None
                                 for i_id in ids_linha:
-                                    if i_id in pendentes_map:
-                                        existe_p = pendentes_map[i_id]
+                                    if i_id in agendamentos_map:
+                                        ag = agendamentos_map[i_id]
                                         break
                                 
-                                if existe_p:
-                                    existe_p.protocolo = main_id
-                                    existe_p.id_cliente = id_cli_excel
-                                    existe_p.id_contrato = id_con_excel
-                                    if nome_c: existe_p.nome_cliente = nome_c
-                                    if cidade_c: existe_p.cidade = cidade_c
-                                    if servico_c: existe_p.tipo_servico = servico_c
-                                    if rua_c: existe_p.rua = rua_c
-                                    if bairro_c: existe_p.bairro = bairro_c
-                                    if cat_4: existe_p.categoria_4 = cat_4
-                                    if criador_ak: existe_p.criador_excel = criador_ak
-                                    if existe_p.status != "Agendado":
-                                        existe_p.status = "Pendente"
-                                    novos_pendentes += 1
+                                nome_c = str(row.get('Cliente', '')).strip() if pd.notna(row.get('Cliente')) else None
+                                rua_base = str(row.get('Rua', '')).strip() if pd.notna(row.get('Rua')) else ""
+                                num_rua = str(row.get('Nº Rua', '')).strip() if pd.notna(row.get('Nº Rua')) else ""
+                                rua_c = f"{rua_base}, {num_rua}".strip(", ") if rua_base else None
+                                bairro_c = str(row.get('Bairro', '')).strip() if pd.notna(row.get('Bairro')) else None
+                                cidade_raw = str(row.get('Cidade', row.get('Região', ''))).strip() if pd.notna(row.get('Cidade', row.get('Região', None))) else None
+                                cidade_c = normalizar_cidade(cidade_raw) if cidade_raw else None
+                                
+                                cat_val = str(row.get('Catálogo', '')).strip() if pd.notna(row.get('Catálogo')) else ""
+                                tg_val = str(row.get('Tipo Geral', '')).strip() if pd.notna(row.get('Tipo Geral')) else ""
+                                servico_c = normalizar_servico(cat_val or tg_val)
+                                
+                                cat_4 = str(row.get('Categoria 4', '')).strip() if pd.notna(row.get('Categoria 4')) else None
+                                criador_ak = str(row.get('Criador', '')).strip() if pd.notna(row.get('Criador')) else None
+                                
+                                if ag:
+                                    if nome_c: ag.nome_cliente = nome_c
+                                    if rua_c: ag.rua = rua_c
+                                    if bairro_c: ag.bairro = bairro_c
+                                    if cat_4 and ag.tipo_servico == "Reparo": ag.categoria_4 = cat_4
+                                    ag.agendado_por = ag.agendado_por or usr["nome"]
+                                    if criador_ak: ag.criador_excel = criador_ak
+                                    ag.dados_completos = True
+                                    atualizados += 1
                                 else:
-                                    novo_p = ProtocoloPendente(
-                                        protocolo=main_id,
-                                        id_cliente=id_cli_excel,
-                                        id_contrato=id_con_excel,
-                                        nome_cliente=nome_c,
-                                        cidade=cidade_c,
-                                        tipo_servico=servico_c,
-                                        rua=rua_c,
-                                        bairro=bairro_c,
-                                        categoria_4=cat_4,
-                                        agendado_por=usr["nome"],
-                                        criador_excel=criador_ak,
-                                        data_referencia=data_referencia,
-                                        status="Pendente"
-                                    )
-                                    db.add(novo_p)
-                                    novos_pendentes += 1
+                                    main_id = proto_excel or id_cli_excel or id_con_excel
+                                    existe_p = None
+                                    for i_id in ids_linha:
+                                        if i_id in pendentes_map:
+                                            existe_p = pendentes_map[i_id]
+                                            break
+                                    
+                                    if existe_p:
+                                        existe_p.protocolo = main_id
+                                        existe_p.id_cliente = id_cli_excel
+                                        existe_p.id_contrato = id_con_excel
+                                        if nome_c: existe_p.nome_cliente = nome_c
+                                        if cidade_c: existe_p.cidade = cidade_c
+                                        if servico_c: existe_p.tipo_servico = servico_c
+                                        if rua_c: existe_p.rua = rua_c
+                                        if bairro_c: existe_p.bairro = bairro_c
+                                        if cat_4: existe_p.categoria_4 = cat_4
+                                        if criador_ak: existe_p.criador_excel = criador_ak
+                                        if existe_p.status != "Agendado":
+                                            existe_p.status = "Pendente"
+                                        novos_pendentes += 1
+                                    else:
+                                        novo_p = ProtocoloPendente(
+                                            protocolo=main_id,
+                                            id_cliente=id_cli_excel,
+                                            id_contrato=id_con_excel,
+                                            nome_cliente=nome_c,
+                                            cidade=cidade_c,
+                                            tipo_servico=servico_c,
+                                            rua=rua_c,
+                                            bairro=bairro_c,
+                                            categoria_4=cat_4,
+                                            agendado_por=usr["nome"],
+                                            criador_excel=criador_ak,
+                                            data_referencia=data_referencia,
+                                            status="Pendente"
+                                        )
+                                        db.add(novo_p)
+                                        novos_pendentes += 1
 
-                        db.commit()
-                        limpar_cache_geral()
-                        
-                        st.markdown("---")
-                        col_res1, col_res2, col_res3 = st.columns(3)
-                        col_res1.metric("🟢 Agendamentos Enriquecidos", f"{atualizados} O.S.")
-                        col_res2.metric("🟡 Salvos em Pendências", f"{novos_pendentes} O.S.")
-                        col_res3.metric("⚪ Ignorados (Recolhimento)", f"{ignorados_recolhimento} O.S.")
-                        
-                        if novos_pendentes > 0:
-                            st.warning(f"⚠️ **{novos_pendentes} protocolo(s)** do Excel foram carregados na **📌 Central de Pendências de Agendamento**!")
+                            db.commit()
+                            limpar_cache_geral()
+                            
+                            st.markdown("---")
+                            col_res1, col_res2, col_res3 = st.columns(3)
+                            col_res1.metric("🟢 Agendamentos Enriquecidos", f"{atualizados} O.S.")
+                            col_res2.metric("🟡 Salvos em Pendências", f"{novos_pendentes} O.S.")
+                            col_res3.metric("⚪ Ignorados (Recolhimento)", f"{ignorados_recolhimento} O.S.")
+                            
+                            if novos_pendentes > 0:
+                                st.warning(f"⚠️ **{novos_pendentes} protocolo(s)** do Excel foram carregados na **📌 Central de Pendências de Agendamento**!")
 
-                    finally:
-                        db.close()
+            with tab_del:
+                st.subheader("Exclusão e Limpeza de Dados Importados")
+                
+                if "msg_sucesso_del" in st.session_state:
+                    st.success(st.session_state.pop("msg_sucesso_del"))
 
-        with tab_del:
-            st.subheader("Exclusão e Limpeza de Dados Importados")
-            
-            if "msg_sucesso_del" in st.session_state:
-                st.success(st.session_state.pop("msg_sucesso_del"))
-
-            db = get_db()
-            try:
                 col_del1, col_del2 = st.columns(2)
                 
                 with col_del1:
@@ -1184,7 +1162,7 @@ else:
                     st.write(f"Atualmente existem **{total_p}** protocolos pendentes de agendamento.")
                     
                     if st.button("🗑️ Apagar TODOS os Pendentes", use_container_width=True, disabled=(total_p == 0)):
-                        modal_confirmar_limpeza_pendentes()
+                        modal_confirmar_limpeza_pendentes(db)
                         
                 with col_del2:
                     st.markdown("#### 2. Apagar Agendamentos por Data")
@@ -1201,39 +1179,35 @@ else:
                             st.rerun()
                         else:
                             st.info("Nenhum registro encontrado para apagar nesta data.")
-            finally:
-                db.close()
 
-    # -------------------------------------------------------------------------
-    # MÓDULO 6: GESTÃO DE USUÁRIOS E PERMISSÕES (APENAS ADMIN)
-    # -------------------------------------------------------------------------
-    elif menu_selecionado == "6. Gestão de Usuários":
-        st.title("👤 Gestão de Usuários e Permissões")
-        
-        if "msg_sucesso_usr" in st.session_state:
-            st.success(st.session_state.pop("msg_sucesso_usr"))
-        
-        tab_cad, tab_edit, tab_list, tab_perm = st.tabs([
-            "➕ Cadastrar Usuário", 
-            "✏️ Editar / Excluir Usuário", 
-            "📋 Usuários Cadastrados",
-            "🔐 Matriz de Permissões por Perfil"
-        ])
-        
-        PERFIS_DISPONIVEIS = ["suporte", "comercial", "gestor_logistica", "admin"]
-        
-        with tab_cad:
-            with st.form("form_novo_usuario"):
-                st.subheader("Cadastrar Novo Colaborador")
-                nome_u = st.text_input("Nome Completo")
-                email_u = st.text_input("E-mail (Login)")
-                senha_u = st.text_input("Senha Inicial", type="password")
-                perfil_u = st.selectbox("Perfil de Acesso", PERFIS_DISPONIVEIS)
-                
-                if st.form_submit_button("Cadastrar Usuário", type="primary"):
-                    if nome_u and email_u and senha_u:
-                        db = get_db()
-                        try:
+        # -------------------------------------------------------------------------
+        # MÓDULO 6: GESTÃO DE USUÁRIOS
+        # -------------------------------------------------------------------------
+        elif menu_selecionado == "6. Gestão de Usuários":
+            st.title("👤 Gestão de Usuários e Permissões")
+            
+            if "msg_sucesso_usr" in st.session_state:
+                st.success(st.session_state.pop("msg_sucesso_usr"))
+            
+            tab_cad, tab_edit, tab_list, tab_perm = st.tabs([
+                "➕ Cadastrar Usuário", 
+                "✏️ Editar / Excluir Usuário", 
+                "📋 Usuários Cadastrados",
+                "🔐 Matriz de Permissões por Perfil"
+            ])
+            
+            PERFIS_DISPONIVEIS = ["suporte", "comercial", "gestor_logistica", "admin"]
+            
+            with tab_cad:
+                with st.form("form_novo_usuario"):
+                    st.subheader("Cadastrar Novo Colaborador")
+                    nome_u = st.text_input("Nome Completo")
+                    email_u = st.text_input("E-mail (Login)")
+                    senha_u = st.text_input("Senha Inicial", type="password")
+                    perfil_u = st.selectbox("Perfil de Acesso", PERFIS_DISPONIVEIS)
+                    
+                    if st.form_submit_button("Cadastrar Usuário", type="primary"):
+                        if nome_u and email_u and senha_u:
                             existe = db.query(Usuario).filter_by(email=email_u.strip().lower()).first()
                             if existe:
                                 st.error("Este e-mail já está cadastrado!")
@@ -1250,15 +1224,11 @@ else:
                                 limpar_cache_geral()
                                 st.success(f"Usuário {nome_u} cadastrado com sucesso!")
                                 st.rerun()
-                        finally:
-                            db.close()
-                    else:
-                        st.warning("Preencha todos os campos obrigatórios.")
-                        
-        with tab_edit:
-            st.subheader("Editar Cadastro ou Excluir Colaborador")
-            db = get_db()
-            try:
+                        else:
+                            st.warning("Preencha todos os campos obrigatórios.")
+                            
+            with tab_edit:
+                st.subheader("Editar Cadastro ou Excluir Colaborador")
                 usuarios_db = db.query(Usuario).order_by(Usuario.nome).all()
                 if not usuarios_db:
                     st.info("Nenhum usuário cadastrado para edição.")
@@ -1315,14 +1285,10 @@ else:
                             st.info("ℹ️ Você está logado com esta conta no momento. Não é possível excluir o seu próprio usuário logado.")
                         else:
                             if st.button(f"🗑️ Excluir Usuário: {user_to_edit.nome}", use_container_width=True):
-                                modal_confirmar_exclusao_usuario(user_to_edit.id, user_to_edit.nome, user_to_edit.email)
-            finally:
-                db.close()
-                
-        with tab_list:
-            st.subheader("Relação Geral de Usuários do Sistema")
-            db = get_db()
-            try:
+                                modal_confirmar_exclusao_usuario(db, user_to_edit.id, user_to_edit.nome, user_to_edit.email)
+                    
+            with tab_list:
+                st.subheader("Relação Geral de Usuários do Sistema")
                 todos_u = db.query(Usuario).all()
                 if todos_u:
                     dados_u = [{
@@ -1333,15 +1299,11 @@ else:
                         "Status": "🟢 Ativo" if u.ativo else "🔴 Inativo"
                     } for u in todos_u]
                     st.dataframe(pd.DataFrame(dados_u), use_container_width=True, hide_index=True)
-            finally:
-                db.close()
 
-        with tab_perm:
-            st.subheader("⚙️ Configurar Acessos e Permissões dos Perfis")
-            st.caption("Marque ou desmarque os módulos aos quais cada perfil terá acesso e clique em Salvar.")
-            
-            db = get_db()
-            try:
+            with tab_perm:
+                st.subheader("⚙️ Configurar Acessos e Permissões dos Perfis")
+                st.caption("Marque ou desmarque os módulos aos quais cada perfil terá acesso e clique em Salvar.")
+                
                 perfis_gerenciados = ["suporte", "comercial", "gestor_logistica"]
                 
                 with st.form("form_matriz_permissoes"):
@@ -1387,54 +1349,51 @@ else:
                         limpar_cache_geral()
                         st.session_state["msg_sucesso_usr"] = "🎉 Permissões de perfil atualizadas com sucesso! As alterações já estão valendo."
                         st.rerun()
-            finally:
-                db.close()
 
-    # -------------------------------------------------------------------------
-    # MÓDULO 7: ALTERAR MINHA SENHA
-    # -------------------------------------------------------------------------
-    elif menu_selecionado == "🔑 Alterar Minha Senha":
-        st.title("🔑 Alterar Minha Senha")
-        st.caption(f"Atualize a senha de acesso da conta de **{usr['nome']}** ({usr['email']}).")
-        
-        col_s1, col_s2 = st.columns([1, 1])
-        with col_s1:
-            with st.form("form_alterar_senha_propria", clear_on_submit=True):
-                senha_atual = st.text_input("Senha Atual", type="password", placeholder="Digite sua senha atual")
-                nova_senha = st.text_input("Nova Senha", type="password", placeholder="Mínimo 6 caracteres")
-                confirma_nova = st.text_input("Confirmar Nova Senha", type="password", placeholder="Repita a nova senha")
-                
-                btn_mudar = st.form_submit_button("Atualizar Minha Senha", type="primary", use_container_width=True)
-                
-                if btn_mudar:
-                    senha_atual_clean = senha_atual.strip()
-                    nova_senha_clean = nova_senha.strip()
-                    confirma_nova_clean = confirma_nova.strip()
+        # -------------------------------------------------------------------------
+        # MÓDULO 7: ALTERAR MINHA SENHA
+        # -------------------------------------------------------------------------
+        elif menu_selecionado == "🔑 Alterar Minha Senha":
+            st.title("🔑 Alterar Minha Senha")
+            st.caption(f"Atualize a senha de acesso da conta de **{usr['nome']}** ({usr['email']}).")
+            
+            col_s1, col_s2 = st.columns([1, 1])
+            with col_s1:
+                with st.form("form_alterar_senha_propria", clear_on_submit=True):
+                    senha_atual = st.text_input("Senha Atual", type="password", placeholder="Digite sua senha atual")
+                    nova_senha = st.text_input("Nova Senha", type="password", placeholder="Mínimo 6 caracteres")
+                    confirma_nova = st.text_input("Confirmar Nova Senha", type="password", placeholder="Repita a nova senha")
+                    
+                    btn_mudar = st.form_submit_button("Atualizar Minha Senha", type="primary", use_container_width=True)
+                    
+                    if btn_mudar:
+                        senha_atual_clean = senha_atual.strip()
+                        nova_senha_clean = nova_senha.strip()
+                        confirma_nova_clean = confirma_nova.strip()
 
-                    if not senha_atual_clean or not nova_senha_clean or not confirma_nova_clean:
-                        st.error("Por favor, preencha todos os campos do formulário.")
-                    elif nova_senha_clean != confirma_nova_clean:
-                        st.error("A nova senha e a confirmação não coincidem!")
-                    elif len(nova_senha_clean) < 6:
-                        st.error("Por motivos de segurança, a nova senha deve ter no mínimo 6 caracteres.")
-                    else:
-                        db = get_db()
-                        try:
-                            user_db = db.query(Usuario).filter_by(id=usr["id"]).first()
-                            if not user_db:
-                                st.error("Usuário não localizado no banco de dados.")
-                            else:
-                                hash_atual_informada = hash_senha(senha_atual_clean)
-                                
-                                if user_db.senha_hash != hash_atual_informada:
-                                    st.error("A 'Senha Atual' informada está incorreta.")
+                        if not senha_atual_clean or not nova_senha_clean or not confirma_nova_clean:
+                            st.error("Por favor, preencha todos os campos do formulário.")
+                        elif nova_senha_clean != confirma_nova_clean:
+                            st.error("A nova senha e a confirmação não coincidem!")
+                        elif len(nova_senha_clean) < 6:
+                            st.error("Por motivos de segurança, a nova senha deve ter no mínimo 6 caracteres.")
+                        else:
+                            try:
+                                user_db = db.query(Usuario).filter_by(id=usr["id"]).first()
+                                if not user_db:
+                                    st.error("Usuário não localizado no banco de dados.")
                                 else:
-                                    user_db.senha_hash = hash_senha(nova_senha_clean)
-                                    db.commit()
-                                    limpar_cache_geral()
-                                    st.success("🎉 Senha alterada com sucesso! Utilize sua nova senha no próximo login.")
-                        except Exception as e:
-                            db.rollback()
-                            st.error(f"Erro ao atualizar senha no banco de dados: {str(e)}")
-                        finally:
-                            db.close()
+                                    hash_atual_informada = hash_senha(senha_atual_clean)
+                                    
+                                    if user_db.senha_hash != hash_atual_informada:
+                                        st.error("A 'Senha Atual' informada está incorreta.")
+                                    else:
+                                        user_db.senha_hash = hash_senha(nova_senha_clean)
+                                        db.commit()
+                                        limpar_cache_geral()
+                                        st.success("🎉 Senha alterada com sucesso! Utilize sua nova senha no próximo login.")
+                            except Exception as e:
+                                db.rollback()
+                                st.error(f"Erro ao atualizar senha no banco de dados: {str(e)}")
+finally:
+    db.close()
